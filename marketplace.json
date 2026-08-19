@@ -1,0 +1,27 @@
+{
+  "name": "zcode-local",
+  "description": "Local plugins built on this machine.",
+  "version": 1,
+  "plugins": [
+    {
+      "name": "git-worktrees",
+      "source": "plugins/git-worktrees",
+      "version": "0.1.0",
+      "displayName": "Git Worktrees",
+      "description": "Git worktree support for ZCode: create, list, inspect, remove, and clean up isolated worktrees with carry-over of ignored files (.worktreeinclude), snapshots before deletion, retention sweeps, PR checkouts, and background agent tasks.",
+      "author": {
+        "name": "agallardol"
+      },
+      "category": "developer-tools",
+      "keywords": [
+        "git",
+        "worktree",
+        "work-tree",
+        "parallel",
+        "isolation",
+        "branches",
+        "tasks"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "name": "git-worktrees",
+  "version": "0.1.0",
+  "description": "Git worktree support for ZCode: create, list, inspect, remove, and clean up isolated worktrees with carry-over of ignored files (.worktreeinclude), snapshots before deletion, retention sweeps, PR checkouts, and background agent tasks.",
+  "author": {
+    "name": "agallardol"
+  },
+  "license": "MIT",
+  "commands": "commands",
+  "skills": "skills",
+  "hooks": "hooks",
+  "mcpServers": {
+    "git-worktrees": {
+      "command": "node",
+      "args": ["${ZCODE_PLUGIN_ROOT}/mcp/server.mjs"],
+      "cwd": "${ZCODE_PROJECT_DIR}",
+      "env": {
+        "ZCODE_WORKTREE_ROOT": "${user_config.worktree_root}",
+        "ZCODE_WORKTREE_DEFAULT_BASE": "${user_config.default_base}",
+        "ZCODE_WORKTREE_MAX_AGE_DAYS": "${user_config.max_age_days}",
+        "ZCODE_WORKTREE_MAX_COUNT": "${user_config.max_count}"
+      }
+    }
+  },
+  "userConfig": {
+    "worktree_root": {
+      "type": "string",
+      "default": "~/.zcode/worktrees",
+      "title": "Worktree root",
+      "description": "Directory where worktrees are stored, one subdirectory per project. Shorthand ~ is allowed."
+    },
+    "default_base": {
+      "type": "string",
+      "default": "fresh",
+      "title": "Default base",
+      "description": "Base for new worktrees: \"fresh\" (origin/HEAD, fetched if stale, falls back to local HEAD when offline), \"head\" (current local HEAD), or any explicit branch, tag, or commit."
+    },
+    "max_age_days": {
+      "type": "number",
+      "default": 14,
+      "title": "Max age (days)",
+      "description": "Managed worktrees with no activity for longer than this are removed by worktrees_cleanup (dirty or locked ones are always skipped)."
+    },
+    "max_count": {
+      "type": "number",
+      "default": 15,
+      "title": "Max worktrees per project",
+      "description": "worktrees_cleanup keeps at most this many managed worktrees per project, removing the least recently active ones first."
+    }
+  }
+}
