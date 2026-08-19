@@ -32,10 +32,9 @@ async function rejects(re, fn) {
 // ---------------------------------------------------------------- name matrix
 
 test("adversarial: hostile names rejected, nothing written outside the store", async () => {
-  const { ops } = newOps();
+  const { ops, storeRoot } = newOps();
   const repo = tmpDir();
   makeRepo(repo, { remote: false });
-  const markerBefore = new Set(await readdir(dirname(repo)));
 
   const hostile = [
     "../evil", "a/b", "a\\b", "..", ".", "...", ".git", ".GIT", "foo..bar",
@@ -48,8 +47,18 @@ test("adversarial: hostile names rejected, nothing written outside the store", a
       ops.create({ repoPath: repo, name })
     );
   }
-  // nothing new appeared next to the repo or its parents
-  assert.deepEqual(await readdir(dirname(repo)), [...markerBefore]);
+  // nothing escaped the store: no traversal artifacts anywhere near the repo
+  // (the shared tmpdir gains unrelated entries from parallel tests — check
+  // targets, not exact listings)
+  const around = [dirname(repo), dirname(dirname(repo)), dirname(storeRoot)];
+  for (const dir of around) {
+    const entries = await readdir(dir);
+    for (const e of entries) {
+      assert.ok(!e.includes("evil"), `traversal artifact "${e}" in ${dir}`);
+      assert.ok(e !== ".git" || dir !== dirname(repo), `stray .git in ${dir}`);
+    }
+  }
+  assert.equal(existsSync(join(storeRoot, "evil")), false);
 });
 
 test("adversarial: name valid for paths but hostile to git refs is still rejected", async () => {
