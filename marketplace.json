@@ -30,7 +30,8 @@
       "examplePrompts": [
         "Create a worktree for this refactor and run it in a background agent",
         "Check out PR 1234 into a worktree for review"
-      ]
+      ],
+      "icon": "assets/icon.png"
     }
   ]
 }
