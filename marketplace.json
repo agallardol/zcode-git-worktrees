@@ -10,7 +10,7 @@
     {
       "name": "git-worktrees",
       "source": "plugins/git-worktrees",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "displayName": "Git Worktrees",
       "description": "Every thread gets its own worktree — automatically. Start a thread in any repo and it instantly gets an isolated git checkout: parallel tasks without stashing, branch juggling, or overwriting each other. Uncommitted work is snapshotted before anything is removed, background agents run tasks inside their own worktrees, and PRs check out with one command.",
       "author": {

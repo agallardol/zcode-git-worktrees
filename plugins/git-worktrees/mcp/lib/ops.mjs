@@ -1,7 +1,7 @@
 // High-level worktree operations shared by the MCP server (and tests).
 // Everything flows through ctx(): resolve repo → load+reconcile state → act.
 import { lstat, readFile, rm, cp, mkdir, realpath, writeFile, readdir } from "node:fs/promises";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { basename, dirname, join } from "node:path";
 import * as git from "./git.mjs";
@@ -45,6 +45,17 @@ async function readJsonIfExists(p) {
   } catch {
     return null;
   }
+}
+
+// Populate a --no-checkout worktree in the background and clear the pending
+// marker. Detached + ignored stdio: it must never hold the hook or session.
+function spawnDetached(wtPath) {
+  const child = spawn(
+    "/bin/sh",
+    ["-c", `git -C "${wtPath}" reset -q --hard && rm -f "${wtPath}/.zcode-checkout-pending"`],
+    { detached: true, stdio: "ignore" }
+  );
+  child.unref();
 }
 
 export class Ops {
@@ -306,7 +317,7 @@ export class Ops {
     };
   }
 
-  async _create({ repoPath, name, baseRef, task, carryDirty, sessionId, skipLifecycleCommands } = {}) {
+  async _create({ repoPath, name, baseRef, task, carryDirty, sessionId, skipLifecycleCommands, deferCheckout } = {}) {
     const ctx = await this.ctx(repoPath);
 
     if (!(await git.hasCommits(ctx.mainPath))) {
@@ -371,14 +382,50 @@ export class Ops {
     if (space.level === "block") throw new OpsError(space.message);
 
     // create (rolling back the branch if git fails halfway — a failed
-    // `worktree add` can leave a freshly created branch behind)
+    // `worktree add` can leave a freshly created branch behind). deferCheckout
+    // skips the file checkout (instant on huge repos); a detached background
+    // process populates it and clears the pending marker.
     try {
-      await git.createWorktree(ctx.mainPath, wtPath, branch, resolvedBase.commit);
+      await git.createWorktree(ctx.mainPath, wtPath, branch, resolvedBase.commit, {
+        noCheckout: Boolean(deferCheckout),
+      });
     } catch (err) {
+      if (deferCheckout) await rm(wtPath, { recursive: true, force: true }).catch(() => {});
       if (await git.branchExists(ctx.mainPath, branch)) {
         await git.deleteBranch(ctx.mainPath, branch, { force: true }).catch(() => {});
       }
       throw err;
+    }
+
+    if (deferCheckout) {
+      // after a successful (checkout-less) add: mark pending BEFORE spawning
+      // the populator, so any observer can tell files are still coming
+      await writeFile(join(wtPath, ".zcode-checkout-pending"), "populating\n").catch(() => {});
+    }
+    // Register the worktree IMMEDIATELY — everything after this (carry-over,
+    // background checkout) is enhancement, and a kill mid-flight must never
+    // orphan a created worktree or leak the store lock's meaning.
+    const now = new Date().toISOString();
+    const entry = ctx.store.recordWorktree(ctx.mainPath, {
+      name: finalName,
+      path: wtPath,
+      branch,
+      base: base === "fresh" || base === "head" ? resolvedBase.baseRef || base : base,
+      baseCommit: resolvedBase.commit,
+      createdAt: now,
+      lastActivityAt: now,
+      task: task || null,
+      agent: null,
+      session: sessionId ? { id: sessionId, startedAt: now } : null,
+      lifecycleCommandsRan: !skipLifecycleCommands,
+      checkoutDeferred: Boolean(deferCheckout),
+      locked: Boolean(task),
+      lockedByUs: Boolean(task),
+      snapshots: [],
+    });
+    await ctx.store.save();
+    if (deferCheckout) {
+      spawnDetached(wtPath);
     }
 
     const warnings = [...resolvedBase.warnings];
@@ -428,32 +475,12 @@ export class Ops {
     }
 
     // lock while an agent task will run
-    let lockedByUs = false;
-    if (task) {
+    if (task && !entry.locked) {
       await git.lockWorktree(ctx.mainPath, wtPath, "zcode-worktrees: agent task").catch(() => {});
-      lockedByUs = true;
+      entry.locked = true;
+      entry.lockedByUs = true;
+      await ctx.store.save();
     }
-
-    const now = new Date().toISOString();
-    const entry = ctx.store.recordWorktree(ctx.mainPath, {
-      name: finalName,
-      path: wtPath,
-      branch,
-      base: base === "fresh" || base === "head" ? resolvedBase.baseRef || base : base,
-      baseCommit: resolvedBase.commit,
-      createdAt: now,
-      lastActivityAt: now,
-      task: task || null,
-      agent: null,
-      session: sessionId
-        ? { id: sessionId, startedAt: now }
-        : null,
-      lifecycleCommandsRan: !skipLifecycleCommands,
-      locked: lockedByUs,
-      lockedByUs,
-      snapshots: [],
-    });
-    await ctx.store.save();
 
     return {
       name: entry.name,
@@ -462,7 +489,8 @@ export class Ops {
       base: entry.base,
       baseCommit: entry.baseCommit,
       task: entry.task,
-      locked: lockedByUs,
+      locked: Boolean(entry.locked),
+      checkoutDeferred: Boolean(deferCheckout),
       carryOver: carry,
       carryDirty: carryDirtyResult,
       setup: setupResults,
@@ -477,6 +505,7 @@ export class Ops {
       ],
       summary:
         `created worktree "${entry.name}" at ${entry.path}\n` +
+        (deferCheckout ? `files are checking out in the background (watch for ${entry.path}/.zcode-checkout-pending)\n` : ``) +
         `branch ${entry.branch} from ${entry.base || "base"} (${entry.baseCommit?.slice(0, 8) ?? "?"})` +
         (carry.copied.length ? `\ncarried over: ${carry.copied.join(", ")}` : "") +
         (warnings.length ? `\nwarnings: ${warnings.join("; ")}` : ""),

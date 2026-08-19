@@ -49,11 +49,12 @@ test("security: auto-session create does NOT execute repo setupCommands (exploit
     {
       ZCODE_WORKTREE_STORE_ROOT: store,
       ZCODE_PROJECT_DIR: repo,
+      ZCODE_WORKTREES_SYNC_AUTO: "1", // deterministic immediate create
     },
     JSON.stringify({ session_id: sid, source: "startup" })
   );
   assert.equal(res.code, 0);
-  assert.match(res.out, /assigned its own isolated git worktree/);
+  assert.match(res.out, /being prepared right now/);
   assert.equal(
     existsSync(marker),
     false,

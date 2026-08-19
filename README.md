@@ -134,7 +134,7 @@ them expose to plugins.
 ```sh
 npm test   # 129 tests: 80 unit (validators, state, carry-over, hooks, edit guard)
            #        + 13 integration (real MCP stdio JSON-RPC + protocol edges)
-           #        + 34 adversarial & security (hostile names, races, corrupt
+           #        + 36 adversarial & security (hostile names, races, corrupt
            #           state, out-of-band damage, exploit regressions)
 
 CI runs the suite on macOS and Linux (Node 20 and 22).

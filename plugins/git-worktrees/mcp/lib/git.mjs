@@ -337,12 +337,12 @@ export async function worktreeAt(mainRepo, path) {
   return list.find((w) => w.path === path) || null;
 }
 
-export async function createWorktree(mainRepo, path, branch, baseCommit) {
+export async function createWorktree(mainRepo, path, branch, baseCommit, { noCheckout = false } = {}) {
+  const args = ["worktree", "add", "-b", branch];
+  if (noCheckout) args.push("--no-checkout");
+  args.push(path, baseCommit);
   try {
-    await git(
-      ["worktree", "add", "-b", branch, path, baseCommit],
-      { cwd: mainRepo }
-    );
+    await git(args, { cwd: mainRepo });
   } catch (err) {
     const stderr = err.stderr || "";
     if (/already checked out at|is used by worktree/i.test(stderr)) {

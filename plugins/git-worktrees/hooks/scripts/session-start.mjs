@@ -7,7 +7,8 @@
 // 2. If auto-session mode is enabled and the session starts in a repo's main
 //    checkout → assign that session its own worktree (bound by session id, so
 //    resumes return to it) and inject usage instructions.
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { StateStore } from "../../mcp/lib/state.mjs";
 import { Ops } from "../../mcp/lib/ops.mjs";
@@ -139,11 +140,6 @@ async function main() {
     }
   }
 
-  const ops = new Ops({
-    storeRoot: root,
-    defaultBase: "head",
-    lockTimeoutMs: 5_000, // fail fast on contention — the hook has its own budget
-  });
   const suffix = sessionId
     .replace(/^sess_/, "")
     .replace(/[^a-zA-Z0-9]/g, "")
@@ -151,43 +147,93 @@ async function main() {
     .slice(0, 8);
   const baseName = `sess-${suffix || Date.now().toString(36).slice(0, 6)}`;
 
-  let created = null;
-  let lastError = null;
-  for (const name of [baseName, `${baseName}-2`]) {
-    try {
-      created = await ops.create({
-        repoPath: cwd,
-        name,
-        baseRef: "head", // start where the user is; no network fetch at session start
-        sessionId,
-        skipLifecycleCommands: true, // SECURITY: never run repo-provided setup commands automatically
-      });
-      break;
-    } catch (err) {
-      lastError = err;
-      if (!/already exists/i.test(String(err?.message || ""))) break;
-    }
-  }
+  // Expected path (deterministic: <store>/<slug>/<name>) used for the instant
+  // "being prepared" context while a detached creator does the real work.
+  const slug = proj?.slug || (await import("node:path")).basename(mainPath);
+  const expectedPath = join(root, slug, baseName);
+  const pendingFile = join(root, `pending-${sessionId}.json`);
 
-  if (!created) {
-    return emitContext([
-      `[git-worktrees] Auto session worktrees are enabled but assigning one failed: ${String(lastError?.message || lastError).slice(0, 200)}`,
-      `Continue working normally, or create one manually with /worktree:new <name>. Disable with /worktree:auto off.`,
+  const preparing = (path, branch = `zcode/${baseName}`) =>
+    emitContext([
+      `[git-worktrees] Auto session worktrees are enabled — your isolated worktree is being prepared right now.`,
+      `- Worktree path: ${path}`,
+      `- Branch: ${branch} (based on the main checkout's current HEAD)`,
+      `- Files appear within seconds (larger repos take longer). Before FIRST use, check the directory is populated (\`ls ${path}\`); if ${path}/.zcode-checkout-pending exists, wait a few seconds and re-check.`,
+      ``,
+      `How to work once it is ready:`,
+      `1. Use ABSOLUTE paths under ${path} for all file reads/edits/writes.`,
+      `2. Run commands with \`git -C "${path}"\` or \`cd "${path}"\` first.`,
+      `3. Commit your work on ${branch} as you go.`,
+      `4. The main checkout at ${mainPath} is READ-ONLY for file edits in this mode (enforced) — including commands: never modify, commit, or push there.`,
+      `5. When the task is done: /worktree:end commits everything and removes the worktree (branch is kept). /worktree:auto off disables this mode.`,
     ]);
+
+  // Idempotency: a fresh pending marker means a creator is already running for
+  // this session (e.g. resume right after startup) — don't spawn a second one.
+  let pending = null;
+  try {
+    pending = JSON.parse(await readFile(pendingFile, "utf8"));
+  } catch {
+    /* none */
+  }
+  const pendingAgeMs = pending?.startedAt ? Date.now() - Date.parse(pending.startedAt) : Infinity;
+  if (pending && pendingAgeMs < 60_000) {
+    return preparing(pending.path || expectedPath);
   }
 
-  return emitContext([
-    `[git-worktrees] Auto session worktrees are enabled — this session has been assigned its own isolated git worktree.`,
-    `- Worktree path: ${created.path}`,
-    `- Branch: ${created.branch} (based on the main checkout's current HEAD)`,
-    ``,
-    `How to work now:`,
-    `1. Use ABSOLUTE paths under ${created.path} for all file reads/edits/writes.`,
-    `2. Run commands with \`git -C "${created.path}"\` or \`cd "${created.path}"\` first.`,
-    `3. Commit your work on ${created.branch} as you go.`,
-    `4. The main checkout at ${mainPath} is READ-ONLY for file edits in this mode (enforced) — including commands: never modify, commit, or push there.`,
-    `5. When the task is done: /worktree:end commits everything and removes the worktree (branch is kept). /worktree:auto off disables this mode.`,
-  ]);
+  // Sync mode (tests, or explicit opt-in) creates inline instead of detaching.
+  if (process.env.ZCODE_WORKTREES_SYNC_AUTO === "1") {
+    const ops = new Ops({
+      storeRoot: root,
+      defaultBase: "head",
+      lockTimeoutMs: 5_000,
+    });
+    let created = null;
+    let lastError = null;
+    for (const name of [baseName, `${baseName}-2`]) {
+      try {
+        created = await ops.create({
+          repoPath: cwd,
+          name,
+          baseRef: "head",
+          sessionId,
+          skipLifecycleCommands: true, // SECURITY: never run repo-provided setup commands automatically
+          deferCheckout: true,
+        });
+        break;
+      } catch (err) {
+        lastError = err;
+        if (!/already exists/i.test(String(err?.message || ""))) break;
+      }
+    }
+    if (!created) {
+      return emitContext([
+        `[git-worktrees] Auto session worktrees are enabled but assigning one failed: ${String(lastError?.message || lastError).slice(0, 200)}`,
+        `Continue working normally, or create one manually with /worktree:new <name>. Disable with /worktree:auto off.`,
+      ]);
+    }
+    return preparing(created.path, created.branch);
+  }
+
+  // Production path: hand the work to a detached creator and return instantly —
+  // session start must never block on repository size.
+  await writeFile(
+    pendingFile,
+    JSON.stringify({ name: baseName, path: expectedPath, startedAt: new Date().toISOString() })
+  ).catch(() => {});
+  const child = spawn(
+    process.execPath,
+    [
+      join(import.meta.dirname, "auto-session-create.mjs"),
+      "--store", root,
+      "--cwd", cwd,
+      "--session", sessionId,
+      "--name", baseName,
+    ],
+    { detached: true, stdio: "ignore" }
+  );
+  child.unref();
+  return preparing(expectedPath);
 }
 
 main().catch(() => {

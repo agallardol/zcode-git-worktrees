@@ -125,11 +125,13 @@ test("hook matches nested paths inside the worktree", async () => {
 
 // ---------------------------------------------------------------- auto mode
 
-function autoEnv(store, cwd, session = "sess_abc12345-1111-2222-3333-444455556666") {
+function autoEnv(store, cwd, session = "sess_abc12345-1111-2222-3333-444455556666", extra = {}) {
   return {
     ZCODE_WORKTREE_STORE_ROOT: store,
     ZCODE_PROJECT_DIR: cwd,
     ZCODE_SESSION_ID: session,
+    ZCODE_WORKTREES_SYNC_AUTO: "1", // tests assert immediate results; production detaches
+    ...extra,
   };
 }
 
@@ -179,7 +181,7 @@ test("per-repo override on beats machine opt-out: worktree created", async () =>
   const sid = "sess_ov2";
   const res = await runHook(autoEnv(store, repo, sid), JSON.stringify({ session_id: sid }));
   const ctx = ctxOf(res);
-  assert.match(ctx, /assigned its own isolated git worktree/);
+  assert.match(ctx, /being prepared right now/);
 });
 
 test("auto mode on: new session in main checkout gets a bound worktree", async () => {
