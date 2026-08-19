@@ -1,16 +1,21 @@
 {
-  "name": "zcode-local",
-  "description": "Local plugins built on this machine.",
+  "name": "zcode-git-worktrees",
+  "description": "Git worktree support for ZCode — parallel, isolated work with safety guarantees.",
   "version": 1,
+  "owner": {
+    "name": "Alfredo Gallardo",
+    "url": "https://github.com/agallardol"
+  },
   "plugins": [
     {
       "name": "git-worktrees",
       "source": "plugins/git-worktrees",
       "version": "0.4.0",
       "displayName": "Git Worktrees",
-      "description": "Git worktree support for ZCode: create, list, inspect, remove, and clean up isolated worktrees with carry-over of ignored files (.worktreeinclude), snapshots before deletion, retention sweeps, PR checkouts, and background agent tasks.",
+      "description": "Git worktree support for ZCode: create, list, inspect, remove, and clean up isolated worktrees with carry-over of ignored files (.worktreeinclude), snapshots before deletion, retention sweeps, PR checkouts, background agent tasks, and automatic per-session worktrees.",
       "author": {
-        "name": "agallardol"
+        "name": "Alfredo Gallardo",
+        "url": "https://github.com/agallardol"
       },
       "category": "developer-tools",
       "keywords": [
@@ -21,6 +26,10 @@
         "isolation",
         "branches",
         "tasks"
+      ],
+      "examplePrompts": [
+        "Create a worktree for this refactor and run it in a background agent",
+        "Check out PR 1234 into a worktree for review"
       ]
     }
   ]

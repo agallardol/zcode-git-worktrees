@@ -1,83 +1,92 @@
-# git-worktrees — Git Worktree Support for ZCode
+# Git Worktrees for ZCode
 
-A ZCode plugin that brings Claude Code / Codex-grade git worktree support to ZCode:
-create isolated checkouts for parallel tasks, carry gitignored files (`.env`) into
-them, run background agents inside them, and remove them safely with snapshots —
-never silently losing work.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen.svg)](#tests)
+![ZCode](https://img.shields.io/badge/ZCode-%E2%89%A5%203.8.1-6E56CF.svg)
 
-```
-/worktree                       → dashboard (branches, dirty state, sizes, agents)
-/worktree:new [name] [task…]    → create (+ optional background agent on it)
-/worktree:list · /worktree:status <name>
-/worktree:remove <name> [--force] [--delete-branch]
-/worktree:cleanup [--apply]     → retention sweep (dry-run first)
-/worktree:pr <number|url>       → check out a GitHub PR into a worktree
-```
-
-## Architecture
+Parallel, isolated work on one repository — Claude Code / Codex-grade git
+worktree support for [ZCode](https://z.ai): every task gets its own directory
+and branch sharing one object store. No stashing, no branch switching, no
+agents overwriting each other.
 
 ```
-plugins/git-worktrees/
-├── .zcode-plugin/plugin.json     # manifest: commands, skill, hook, MCP server, userConfig
-├── commands/                     # 7 slash commands driving the MCP tools
-├── skills/worktrees/             # model-facing skill (when/how to use worktrees)
-├── hooks/scripts/session-start.mjs   # injects worktree context when a session starts inside one
-└── mcp/
-    ├── server.mjs                # zero-dependency MCP stdio server (JSON-RPC 2.0)
-    └── lib/
-        ├── ops.mjs               # high-level operations (create/list/status/remove/cleanup/…)
-        ├── git.mjs               # execFile-only git plumbing (never a shell)
-        ├── state.mjs             # self-healing registry at <store>/state.json
-        ├── safety.mjs            # name validation, symlink guards, disk-space checks
-        ├── carryover.mjs         # .worktreeinclude + copyFiles (only gitignored files carried)
-        ├── snapshot.mjs          # diff + untracked capture before destructive ops
-        ├── lock.mjs              # in-process + cross-process store lock (mkdir lockfile)
-        └── names.mjs             # friendly auto-names (adjective-animal)
+/worktree:new fix-auth "Refactor the login flow"   ← worktree + background agent
+/worktree                                          ← dashboard: branches, sizes, agents
+/worktree:end fix-auth                             ← commit everything, remove cleanly
 ```
 
-**Store layout** (central, repos stay pristine):
+**Why you'll want it**
+
+- **Never lose work.** Removal of dirty worktrees, running agents, or unmerged
+  branches is refused without `force` — and even then, uncommitted changes are
+  snapshotted first (tracked diff + untracked files) to a restorable directory.
+  Branches are kept by default.
+- **Your environment travels with you.** `.env` and friends (anything
+  gitignored and listed in `.worktreeinclude`) are carried into new worktrees;
+  `setupCommands` (`pnpm install`, `docker compose up -d`) run automatically.
+- **It stays out of your way.** Worktrees live in a central store
+  (`~/.zcode/worktrees`), your repos stay pristine, and a retention sweep
+  keeps disk usage bounded. Nothing is ever deleted silently.
+
+## Install
+
+In ZCode: **Settings → Plugin Management → + → Add marketplace from GitHub** →
 
 ```
-~/.zcode/worktrees/
-├── state.json                 # registry (0600, atomic writes, self-healing)
-├── <project-slug>/<name>/     # one worktree per task, branch zcode/<name>
-├── snapshots/<project>/<name>-<timestamp>/   # changes.patch + untracked/**
-└── .lock/                     # cross-process mutation lock
+agallardol/zcode-git-worktrees
 ```
 
-## MCP tools
+then install **Git Worktrees** from it (or say "install the git-worktrees
+plugin" to your agent). Requires ZCode ≥ 3.8.1, `node` ≥ 18 on PATH, `git`.
 
-| Tool | Purpose |
+## The commands
+
+| Command | What it does |
 |---|---|
-| `worktrees_create` `{name?, baseRef?, task?, carryDirty?}` | Base `fresh` (origin/HEAD, offline → local HEAD + warning), `head`, or explicit ref. Carries `.worktreeinclude` files (only if gitignored — tracked files are never duplicated), runs `setupCommands`, optionally copies uncommitted changes. Locks while a task/agent runs. |
-| `worktrees_list` / `worktrees_status` | Branch, dirty breakdown, ahead/behind, unpushed, size, activity (state + git HEAD mtime), snapshots, agent |
-| `worktrees_remove` `{name, force?, deleteBranch?}` | Refuses dirty / agent-active / unmerged-branch deletion without `force`; always snapshots first; branch kept by default |
-| `worktrees_cleanup` `{dryRun?, maxAgeDays?, maxCount?}` | Never touches dirty/locked/agent-active worktrees; dry-run by default |
-| `worktrees_prune` | Reconciles git + state after out-of-band deletion |
-| `worktrees_snapshot` `{name}` | On-demand capture of uncommitted work |
-| `worktrees_set_task` `{name, task?, agentId?, clearAgent?}` | Links background agents to worktrees (locks/unlocks) |
+| `/worktree` | Dashboard — branch, dirty state, size, activity, running agents |
+| `/worktree:new [name] [task…]` | Create a worktree (friendly auto-name if omitted); with a task, spawns a **background agent** that works inside it |
+| `/worktree:status <name>` | Diff stat, unpushed commits, snapshots |
+| `/worktree:remove <name>` | Safe removal — snapshots uncommitted work first |
+| `/worktree:cleanup` | Retention sweep (dry-run first; skips anything dirty/locked/active) |
+| `/worktree:pr <number\|url>` | Check out a GitHub PR into a review worktree |
+| `/worktree:end [name]` | End-of-task: commit everything with a real message, remove, keep branch |
+| `/worktree:auto` | Per-session automatic worktrees — see below |
 
-## Safety model
+Behind them: nine MCP tools (`worktrees_create`, `worktrees_list`,
+`worktrees_status`, `worktrees_remove`, `worktrees_cleanup`, `worktrees_prune`,
+`worktrees_snapshot`, `worktrees_set_task`, `worktrees_auto_session`), a
+model-facing skill, and hooks — so the agent can use worktrees on its own when
+you ask for parallel or isolated work.
 
-- **Never silent loss**: dirty removal requires `force` and always snapshots
-  (tracked diff → `changes.patch`, untracked → `untracked/**`); branches are kept
-  by default; unmerged branches are never deleted without `force`.
-- **Never escapes the store**: names validated (path-safe + git-ref-safe, no
-  traversal/case-twin/unicode tricks), full worktree path guarded against
-  symlinks, store paths canonicalized; failed `worktree add` rolls back its branch.
-- **Concurrency-safe**: all mutations serialized by an in-process queue plus a
-  cross-process mkdir lockfile with stale-lock breaking.
-- **Self-healing state**: corrupt `state.json` quarantined + rebuilt; worktrees
-  re-adopted by scanning git; dead projects dropped; manual deletions reconciled
-  by `prune`/`cleanup`.
+## Auto-session worktrees (on by default)
+
+Every new session in a repo's main checkout gets its own worktree
+(`zcode/sess-…`); resuming returns to the same one, and file edits to the main
+checkout are blocked and redirected to the session worktree. Toggle it in
+**Settings → Plugins → Git Worktrees** or with `/worktree:auto` (most recent
+change wins). A repo can always opt out:
+
+```json
+// .zcode/worktree.json in the repo
+{ "autoSession": false }
+```
 
 ## Repo-side configuration (optional)
 
-`.worktreeinclude` (gitignore-style patterns — only files that are *also*
-gitignored are carried into new worktrees) and `.zcode/worktree.json`:
+`.worktreeinclude` — gitignore-style patterns; only files that are *also*
+gitignored are carried into new worktrees (tracked files are never duplicated):
+
+```
+.env
+config/secrets.json
+```
+
+`.zcode/worktree.json` — explicit files, lifecycle hooks, and the auto-session
+override:
 
 ```json
 {
+  "autoSession": true,
   "copyFiles": [".env.local"],
   "setupCommands": ["pnpm install"],
   "preRemoveCommands": ["docker compose down"]
@@ -85,76 +94,51 @@ gitignored are carried into new worktrees) and `.zcode/worktree.json`:
 ```
 
 Plugin settings (Settings → Plugins → Git Worktrees): worktree root, default
-base, max age days (14), max worktrees per project (15).
+base (`fresh` = origin/HEAD with offline fallback, or `head`), max age days
+(14), max worktrees per project (15).
 
-## Install / update / uninstall
+## Safety model
 
-Installed from the local marketplace in this repo (registered via the ZCode
-Protocol `plugins/marketplace/add`):
+- **Nothing escapes the store** — names validated for path and git-ref safety
+  (traversal, `.lock`, case-twin, unicode tricks all rejected), full paths
+  guarded against symlinks, store paths canonicalized; a failed
+  `git worktree add` rolls back its branch.
+- **Concurrency-safe** — mutations serialized by an in-process queue plus a
+  cross-process lockfile; parallel creates never lose state.
+- **Self-healing** — corrupt state quarantined and rebuilt, worktrees re-adopted
+  from git, out-of-band deletions reconciled by `prune`/`cleanup`.
+- **Shell-free git** — every git call goes through `execFile`; the only shell
+  execution is your own `setupCommands`/`preRemoveCommands` from the repo's
+  `.zcode/worktree.json`.
 
-```sh
-HELPER="/Applications/ZCode.app/Contents/Frameworks/ZCode Helper.app/Contents/MacOS/ZCode Helper"
-ENGINE="/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs"
-
-# add marketplace + install (or use the desktop UI: Settings → Plugins → +)
-echo '{"id":1,"method":"plugins/marketplace/add","params":{"source":"'"$PWD"'","workspace":{"workspacePath":"'"$PWD"'","workspaceKey":"'"$PWD"'"}}}' \
-  | ELECTRON_RUN_AS_NODE=1 "$HELPER" "$ENGINE" app-server
-echo '{"id":1,"method":"plugins/install","params":{"pluginName":"git-worktrees","marketplace":"zcode-local","workspace":{"workspacePath":"'"$PWD"'","workspaceKey":"'"$PWD"'"}}}' \
-  | ELECTRON_RUN_AS_NODE=1 "$HELPER" "$ENGINE" app-server
-```
-
-The app **copies** the plugin into `~/.zcode/cli/plugins/cache/zcode-local/…` at
-install time — after editing the plugin here, re-run `plugins/marketplace/update`
-(method `plugins/marketplace/update`) or reinstall to sync the cache.
-Uninstall: `plugins/uninstall` or disable with `/plugins disable git-worktrees@zcode-local`.
-
-## Auto-session worktrees (on by default)
-
-```
-/worktree:auto           → status (on by default)
-/worktree:auto off       → disable machine-wide (on re-enables)
-/worktree:end [name]     → commit everything, remove the worktree (branch kept)
-```
-
-**Also in Settings → Plugins → Git Worktrees** ("Auto session worktrees"). How
-the UI reaches the hooks (which cannot read plugin settings): the manifest
-injects the boolean as `ZCODE_WORKTREE_AUTO_SESSION` into the MCP server, and
-the server syncs it into `<store>/auto-session.json` at every session start.
-Precedence is "most recent deliberate change wins" — a Settings change is
-adopted when it differs from the last synced value; a `/worktree:auto` write
-stays sticky until the Settings value changes again. Per-repo override beats
-both: `.zcode/worktree.json` with `{"autoSession": false}` keeps that repo's
-sessions normal; `true` opts a repo in even when the mode is off. Settings
-changes apply from the next session.
-
-How it works:
-
-- The **SessionStart hook** detects a new session (by `session_id`) in a git repo's main checkout and creates `zcode/sess-<session-8>` based on the current HEAD (no network fetch at session start). The binding is persistent — **resuming a session returns to its worktree**.
-- The session's cwd stays in the main checkout (ZCode plugins cannot change it), so this is *soft isolation with hard edit protection*: the injected context tells the agent to work via absolute paths and `git -C`, and a **PreToolUse guard blocks Write/Edit/ApplyPatch/NotebookEdit** against the main checkout while the mode is on and the session has an assigned worktree. Bash is not statically policed.
-- **There is no session-end event in ZCode**, so nothing is auto-committed or auto-removed at exit: `/worktree:end` is the explicit commit-and-remove flow, `/worktree:remove` discards (with snapshot), and the retention sweep collects idle session worktrees like any other.
-- The marker lives at `<store>/auto-session.json` (owned by the `worktrees_auto_session` tool). The MCP server persists a store pointer at `~/.zcode/worktrees/store-location.json` so hooks find a non-default configured root.
+Compared to the tools that inspired it: PR-number checkouts and
+`.worktreeinclude` semantics come from Claude Code, snapshot-before-delete and
+the central store from Codex, bounded retention from Cursor/Codex — plus
+background-agent task orchestration and hard edit isolation, which none of
+them expose to plugins.
 
 ## Tests
 
 ```sh
-npm test                 # tests: unit + integration + adversarial (see counts below)
-npm run test:unit        # validators, state, carry-over, snapshots, git ops, hooks (incl. auto mode + edit guard)
-npm run test:integration # MCP server over real stdio JSON-RPC + protocol edge cases
-npm run test:adversarial # hostile names, races, corrupt state, out-of-band damage
+npm test   # 123 tests: 80 unit (validators, state, carry-over, hooks, edit guard)
+           #         + 13 integration (real MCP stdio JSON-RPC + protocol edges)
+           #         + 30 adversarial (hostile names, races, corrupt state,
+           #            out-of-band damage, parallel creates/removes)
 ```
 
-Adversarial highlights: 8 parallel creates across separate processes (no lost
-updates), parallel removes (exactly one wins), symlink redirection attempts,
-corrupted-then-rebuilt state, manually deleted directories, case-insensitive
-collisions, unborn/detached/bare repos, unreachable remotes, preRemove
-failures, and removal refusals for dirty/agent-active/main-checkout targets.
+The suites run entirely against local fixtures — no network, no model calls.
 
-Verified end-to-end in live headless ZCode sessions (GLM): create + list +
-`.worktreeinclude` carry-over, SessionStart context injection inside a worktree,
-and forced dirty removal with snapshot + branch retention.
+## Notes & limitations
 
-## Requirements
+- Auto-session isolation is *soft for commands, hard for edits*: Write/Edit
+  tools are blocked against the main checkout by a PreToolUse guard; Bash is
+  guided by injected context, not statically policed.
+- ZCode has no session-end event, so nothing is auto-committed or deleted at
+  exit — `/worktree:end` is the explicit finish line, and the retention sweep
+  collects what's left idle.
+- One-session lag on Settings changes for auto-session (hooks read a marker the
+  MCP server syncs at session start).
 
-- ZCode ≥ 3.8.1 (plugin system with MCP servers + hooks)
-- `node` ≥ 18 on PATH (the MCP server is launched with `node`)
-- `git` ≥ 2.28 (`git init -b` used by fixtures; plugin itself needs standard worktree support)
+## License
+
+[MIT](LICENSE) © Alfredo Gallardo
