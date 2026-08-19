@@ -4,10 +4,10 @@
 [![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen.svg)](#tests)
 ![ZCode](https://img.shields.io/badge/ZCode-%E2%89%A5%203.8.1-6E56CF.svg)
 
-Parallel, isolated work on one repository — Claude Code / Codex-grade git
-worktree support for [ZCode](https://z.ai): every task gets its own directory
-and branch sharing one object store. No stashing, no branch switching, no
-agents overwriting each other.
+Every thread gets its own worktree — **automatically**. Git Worktrees gives
+each new [ZCode](https://z.ai) thread an isolated checkout of your repo, so
+tasks run in parallel without stashing, branch juggling, or overwriting each
+other. Start chatting; you are already isolated.
 
 ```
 /worktree:new fix-auth "Refactor the login flow"   ← worktree + background agent
@@ -17,6 +17,9 @@ agents overwriting each other.
 
 **Why you'll want it**
 
+- **Zero setup.** Auto-session mode (on by default) hands every new thread its
+  own worktree the moment it starts — and resuming a thread returns to the
+  same one. No commands needed, ever.
 - **Never lose work.** Removal of dirty worktrees, running agents, or unmerged
   branches is refused without `force` — and even then, uncommitted changes are
   snapshotted first (tracked diff + untracked files) to a restorable directory.

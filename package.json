@@ -1,9 +1,9 @@
 {
   "name": "zcode-git-worktrees",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "type": "module",
-  "description": "Git worktrees plugin for ZCode (plugin lives in plugins/git-worktrees)",
+  "description": "Every thread automatically gets its own isolated git worktree — parallel work with zero setup. Snapshot-safe removal, background agent tasks, PR checkouts, and retention cleanup included.",
   "author": "Alfredo Gallardo (https://github.com/agallardol)",
   "license": "MIT",
   "repository": {

@@ -1,7 +1,7 @@
 {
   "name": "git-worktrees",
-  "version": "0.4.2",
-  "description": "Git worktree support for ZCode: create, list, inspect, remove, and clean up isolated worktrees with carry-over of ignored files (.worktreeinclude), snapshots before deletion, retention sweeps, PR checkouts, and background agent tasks.",
+  "version": "0.4.3",
+  "description": "Every thread automatically gets its own isolated git worktree — parallel work with zero setup. Snapshot-safe removal, background agent tasks, PR checkouts, and retention cleanup included.",
   "author": {
     "name": "Alfredo Gallardo",
     "url": "https://github.com/agallardol"
