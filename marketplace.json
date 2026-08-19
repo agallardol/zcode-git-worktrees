@@ -10,7 +10,7 @@
     {
       "name": "git-worktrees",
       "source": "plugins/git-worktrees",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "displayName": "Git Worktrees",
       "description": "Git worktree support for ZCode: create, list, inspect, remove, and clean up isolated worktrees with carry-over of ignored files (.worktreeinclude), snapshots before deletion, retention sweeps, PR checkouts, background agent tasks, and automatic per-session worktrees.",
       "author": {
@@ -31,7 +31,7 @@
         "Create a worktree for this refactor and run it in a background agent",
         "Check out PR 1234 into a worktree for review"
       ],
-      "icon": "assets/icon.png"
+      "icon": "https://raw.githubusercontent.com/agallardol/zcode-git-worktrees/main/assets/icon.png"
     }
   ]
 }

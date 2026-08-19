@@ -1,6 +1,6 @@
 {
   "name": "git-worktrees",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Git worktree support for ZCode: create, list, inspect, remove, and clean up isolated worktrees with carry-over of ignored files (.worktreeinclude), snapshots before deletion, retention sweeps, PR checkouts, and background agent tasks.",
   "author": {
     "name": "Alfredo Gallardo",
@@ -9,11 +9,12 @@
   "license": "MIT",
   "commands": "commands",
   "skills": "skills",
-  "hooks": "hooks",
   "mcpServers": {
     "git-worktrees": {
       "command": "node",
-      "args": ["${ZCODE_PLUGIN_ROOT}/mcp/server.mjs"],
+      "args": [
+        "${ZCODE_PLUGIN_ROOT}/mcp/server.mjs"
+      ],
       "cwd": "${ZCODE_PROJECT_DIR}",
       "env": {
         "ZCODE_WORKTREE_ROOT": "${user_config.worktree_root}",
