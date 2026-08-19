@@ -60,16 +60,24 @@ test("resolveStoreRoot: defaults to ~/.zcode/worktrees without pointer", async (
   );
 });
 
-test("auto-session marker roundtrip + corrupt marker reads as disabled", async () => {
+test("auto-session marker: enabled by default, explicit off persists, corrupt fails to default", async () => {
   const root = tmpDir();
-  assert.equal((await readAutoSession(root)).enabled, false);
+  assert.equal((await readAutoSession(root)).enabled, true, "missing marker → default ON");
+  assert.equal((await readAutoSession(root)).explicit, false);
+
   const written = await writeAutoSession(root, true);
   assert.equal(written.enabled, true);
-  assert.equal((await readAutoSession(root)).enabled, true);
+  assert.equal((await readAutoSession(root)).explicit, true);
+
   await writeAutoSession(root, false);
-  assert.equal((await readAutoSession(root)).enabled, false);
+  const off = await readAutoSession(root);
+  assert.equal(off.enabled, false, "explicit opt-out persists");
+  assert.equal(off.explicit, true);
+
   await writeFile(join(root, "auto-session.json"), "garbage{");
-  assert.equal((await readAutoSession(root)).enabled, false, "corrupt marker fails closed");
+  const corrupt = await readAutoSession(root);
+  assert.equal(corrupt.enabled, true, "corrupt marker falls back to default (ON)");
+  assert.equal(corrupt.explicit, false);
 });
 
 async function realHome() {

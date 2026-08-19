@@ -108,13 +108,15 @@ install time — after editing the plugin here, re-run `plugins/marketplace/upda
 (method `plugins/marketplace/update`) or reinstall to sync the cache.
 Uninstall: `plugins/uninstall` or disable with `/plugins disable git-worktrees@zcode-local`.
 
-## Auto-session worktrees (opt-in)
+## Auto-session worktrees (on by default)
 
 ```
-/worktree:auto on      → each NEW session in a repo's main checkout gets its own worktree
-/worktree:end [name]   → commit everything, remove the worktree (branch kept)
-/worktree:auto off     → back to normal sessions
+/worktree:auto           → status (on by default)
+/worktree:auto off       → disable machine-wide (persists; on re-enables)
+/worktree:end [name]     → commit everything, remove the worktree (branch kept)
 ```
+
+Per-repo override beats the machine setting: `.zcode/worktree.json` with `{"autoSession": false}` keeps that repo's sessions normal; `true` opts a repo in even when the mode is off.
 
 How it works:
 

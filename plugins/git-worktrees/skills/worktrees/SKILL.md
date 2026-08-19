@@ -27,9 +27,9 @@ Worktrees give every task its own directory + branch sharing one git object stor
 
 Slash commands `/worktree`, `/worktree:new`, `/worktree:list`, `/worktree:status`, `/worktree:remove`, `/worktree:cleanup`, `/worktree:pr`, `/worktree:end`, `/worktree:auto` drive the same tools with the full UX.
 
-## Auto-session mode (opt-in)
+## Auto-session mode (on by default)
 
-`/worktree:auto on` → every NEW session started in a repo's main checkout is assigned its own worktree (branch `zcode/sess-<id>`, based on current HEAD). Resuming a session returns to its worktree; edits to the main checkout are blocked (PreToolUse guard) and redirected to the session worktree; `/worktree:end` commits everything and removes the worktree. Since sessions there run with cwd still in the main checkout, agents must use absolute paths into the worktree and `git -C` — the injected SessionStart context explains this. `/worktree:auto off` restores normal behavior.
+Every NEW session started in a repo's main checkout is assigned its own worktree (branch `zcode/sess-<id>`, based on current HEAD). Resuming a session returns to its worktree; edits to the main checkout are blocked (PreToolUse guard) and redirected to the session worktree; `/worktree:end` commits everything and removes the worktree. Since sessions there run with cwd still in the main checkout, agents must use absolute paths into the worktree and `git -C` — the injected SessionStart context explains this. Escape hatches: `/worktree:auto off` (machine-wide) or per-repo `.zcode/worktree.json` `{"autoSession": false}`.
 
 ## Core flows
 

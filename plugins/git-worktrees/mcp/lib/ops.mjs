@@ -249,8 +249,9 @@ export class Ops {
     return this.withLock(() => this._autoSession(args));
   }
 
-  // Get/set the auto-session mode marker. When enabled, the SessionStart hook
-  // gives each new session in a repo's main checkout its own worktree.
+  // Get/set the auto-session mode marker. Enabled by default; explicit
+  // enabled:false persists as the machine-wide opt-out, and each repo can
+  // override via .zcode/worktree.json {"autoSession": false|true}.
   async _autoSession({ enabled } = {}) {
     const root = await this.ensureStoreRoot();
     if (enabled === undefined) {
@@ -258,15 +259,18 @@ export class Ops {
       return {
         ...current,
         path: join(root, "auto-session.json"),
-        summary: `auto session worktrees are ${current.enabled ? "ENABLED" : "disabled"}`,
+        summary:
+          `auto session worktrees are ${current.enabled ? "ENABLED" : "disabled"}` +
+          (current.explicit ? " (explicitly set)" : " (default — set explicitly with this tool to pin)") +
+          `. Per-repo override: .zcode/worktree.json {"autoSession": false}`,
       };
     }
     const result = await writeAutoSession(root, enabled);
     return {
       ...result,
       summary: enabled
-        ? "auto session worktrees ENABLED — new sessions in a repo's main checkout get their own worktree (current sessions unaffected; /worktree:auto off disables)"
-        : "auto session worktrees disabled — new sessions run normally in the main checkout",
+        ? "auto session worktrees ENABLED — new sessions in a repo's main checkout get their own worktree (current sessions unaffected)"
+        : "auto session worktrees disabled — new sessions run normally in the main checkout (per-repo {\"autoSession\": true} still opts a repo in)",
     };
   }
 

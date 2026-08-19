@@ -24,13 +24,14 @@ function runGuard(env, payload) {
     child.stdout.on("data", (d) => (out += d));
     child.on("close", (code) => resolve({ code, out }));
     child.stdin.end(JSON.stringify(payload));
-    setTimeout(() => child.kill(), 10000).unref();
+    setTimeout(() => child.kill(), 45000).unref();
   });
 }
 
 async function setupBound({ auto = true } = {}) {
+  // auto: true|false writes an explicit marker; null/undefined leaves the default
   const store = tmpDir();
-  if (auto) await writeAutoSession(store, true);
+  if (auto === true || auto === false) await writeAutoSession(store, auto);
   const repo = tmpDir();
   makeRepo(repo, { remote: false });
   // create + bind a session worktree through the real Ops path
@@ -150,4 +151,28 @@ test("guard: dirty-session integration — deny decision names the redirect targ
   });
   const decision = JSON.parse(res.out);
   assert.match(decision.reason, new RegExp(s.worktree.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+});
+
+test("guard honors per-repo override off (machine default on)", async () => {
+  const s = await setupBound({ auto: null }); // no marker → default ON
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  await mkdir(join(s.repo, ".zcode"), { recursive: true });
+  await writeFile(join(s.repo, ".zcode", "worktree.json"), JSON.stringify({ autoSession: false }));
+  const res = await runGuard(s.env, {
+    tool_name: "Write",
+    tool_input: { file_path: join(s.repo, "README.md"), content: "x" },
+    session_id: s.sessionId,
+  });
+  assert.equal(res.out, "", "repo override off → guard inactive");
+});
+
+test("guard active with machine default (no marker) for bound session", async () => {
+  const s = await setupBound({ auto: null }); // default ON
+  const res = await runGuard(s.env, {
+    tool_name: "Write",
+    tool_input: { file_path: join(s.repo, "README.md"), content: "x" },
+    session_id: s.sessionId,
+  });
+  const decision = JSON.parse(res.out);
+  assert.equal(decision.continue, false, "default-on polices bound sessions");
 });

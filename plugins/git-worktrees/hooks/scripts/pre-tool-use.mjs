@@ -12,6 +12,20 @@ import { StateStore } from "../../mcp/lib/state.mjs";
 import * as git from "../../mcp/lib/git.mjs";
 import { resolveStoreRoot, readAutoSession } from "../../mcp/lib/store.mjs";
 
+// Per-repo override in .zcode/worktree.json ("autoSession": true/false) beats
+// the machine-wide marker; null = no override.
+async function repoAutoOverride(mainPath) {
+  try {
+    const cfg = JSON.parse(
+      await readFile(join(mainPath, ".zcode", "worktree.json"), "utf8")
+    );
+    if (cfg && typeof cfg.autoSession === "boolean") return cfg.autoSession;
+  } catch {
+    /* absent or invalid → no override */
+  }
+  return null;
+}
+
 const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "ApplyPatch", "NotebookEdit"]);
 
 function readStdin() {
@@ -73,8 +87,6 @@ async function main() {
   if (typeof filePath !== "string" || filePath.length === 0) return;
 
   const root = await resolveStoreRoot();
-  const auto = await readAutoSession(root);
-  if (!auto.enabled) return;
 
   const sessionId = typeof input.session_id === "string" ? input.session_id : null;
   if (!sessionId) return;
@@ -92,6 +104,11 @@ async function main() {
     return;
   }
   const mainPath = await realpath(repo.mainPath).catch(() => repo.mainPath);
+
+  const auto = await readAutoSession(root);
+  const override = await repoAutoOverride(mainPath);
+  const autoEnabled = override !== null ? override : auto.enabled;
+  if (!autoEnabled) return;
 
   const store = new StateStore(root);
   await store.load();

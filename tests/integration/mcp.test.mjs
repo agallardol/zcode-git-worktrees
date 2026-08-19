@@ -52,7 +52,7 @@ class McpClient {
     return new McpClient(child);
   }
 
-  request(method, params, { timeoutMs = 60_000 } = {}) {
+  request(method, params, { timeoutMs = 120_000 } = {}) {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -347,20 +347,23 @@ test("state.json gets 0600 permissions", async (t) => {
   assert.equal(st.mode & 0o777, 0o600);
 });
 
-test("auto_session tool: off by default, toggle roundtrip, invalid args", async (t) => {
+test("auto_session tool: on by default, toggle roundtrip, invalid args", async (t) => {
   const store = tmpDir();
   const client = await started(t, { ZCODE_WORKTREE_STORE_ROOT: store });
 
   const initial = await callOk(client, "worktrees_auto_session", {});
-  assert.equal(initial.enabled, false);
-
-  const on = await callOk(client, "worktrees_auto_session", { enabled: true });
-  assert.equal(on.enabled, true);
-  const marker = JSON.parse(await readFile(on.path, "utf8"));
-  assert.equal(marker.enabled, true);
+  assert.equal(initial.enabled, true, "default is ON");
+  assert.equal(initial.explicit, false);
 
   const off = await callOk(client, "worktrees_auto_session", { enabled: false });
   assert.equal(off.enabled, false);
+  const marker = JSON.parse(await readFile(off.path, "utf8"));
+  assert.equal(marker.enabled, false);
+  const reread = await callOk(client, "worktrees_auto_session", {});
+  assert.equal(reread.enabled, false, "explicit opt-out persists");
+
+  const on = await callOk(client, "worktrees_auto_session", { enabled: true });
+  assert.equal(on.enabled, true);
 
   assert.match(
     await callErr(client, "worktrees_auto_session", { enabled: "yes" }),

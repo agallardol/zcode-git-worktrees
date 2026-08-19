@@ -8,7 +8,7 @@ import { Ops, OpsError } from "./lib/ops.mjs";
 import { GitError } from "./lib/git.mjs";
 import { resolveStoreRoot, persistStorePointer } from "./lib/store.mjs";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const SERVER_NAME = "git-worktrees";
 
 // ---- configuration from environment (manifest injects userConfig) ----------
@@ -170,7 +170,7 @@ const TOOLS = [
   {
     name: "worktrees_auto_session",
     description:
-      "Get or toggle auto-session mode. When enabled, every new session started in a repository's main checkout is automatically given its own worktree (branch zcode/sess-<id>, based on current HEAD); resuming a session returns to the same worktree, and file edits to the main checkout are blocked in favor of the session worktree. Affects new sessions only.",
+      "Get or toggle auto-session mode (ENABLED by default). Every new session started in a repository's main checkout gets its own worktree (branch zcode/sess-<id>, based on current HEAD); resuming returns to the same worktree, and file edits to the main checkout are blocked in favor of the session worktree. Disable machine-wide with enabled:false, or per repo via .zcode/worktree.json {\"autoSession\": false}. Affects new sessions only.",
     inputSchema: {
       type: "object",
       properties: {

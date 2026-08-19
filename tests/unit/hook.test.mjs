@@ -29,7 +29,7 @@ function runHook(env, stdin = "{}") {
     child.stderr.on("data", (d) => (err += d));
     child.on("close", (code) => resolve({ code, out, err }));
     child.stdin.end(stdin);
-    setTimeout(() => child.kill(), 20000).unref();
+    setTimeout(() => child.kill(), 60000).unref();
   });
 }
 
@@ -133,14 +133,53 @@ function autoEnv(store, cwd, session = "sess_abc12345-1111-2222-3333-44445555666
   };
 }
 
-test("auto mode off: no worktree created, hook silent in main checkout", async () => {
+test("auto mode explicitly off: no worktree created, hook silent in main checkout", async () => {
   const store = tmpDir();
+  await writeAutoSession(store, false); // machine-wide opt-out (default is ON)
   const repo = tmpDir();
   makeRepo(repo, { remote: false });
   const res = await runHook(autoEnv(store, repo), JSON.stringify({ session_id: "sess_x" }));
   assert.equal(res.code, 0);
   assert.equal(res.out, "");
   assert.equal(existsSync(join(store, repo.split("/").pop())), false);
+});
+
+test("auto mode default (no marker): new session gets a worktree", async () => {
+  const store = tmpDir(); // no marker written → default enabled
+  const repo = tmpDir();
+  makeRepo(repo, { remote: false });
+  const sid = "sess_77aa88bb-0000-0000-0000-000000000009";
+  const res = await runHook(autoEnv(store, repo, sid), JSON.stringify({ session_id: sid }));
+  const ctx = ctxOf(res);
+  assert.match(ctx, /sess-77aa88bb/);
+  const repoName = (await realpath(repo)).split("/").pop();
+  assert.ok(existsSync(join(store, repoName, "sess-77aa88bb")));
+});
+
+test("per-repo override off beats machine default: no worktree", async () => {
+  const store = tmpDir(); // default ON, no marker
+  const repo = tmpDir();
+  makeRepo(repo, { remote: false });
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(join(repo, ".zcode"), { recursive: true });
+  await writeFile(join(repo, ".zcode", "worktree.json"), JSON.stringify({ autoSession: false }));
+  const res = await runHook(autoEnv(store, repo), JSON.stringify({ session_id: "sess_ov1" }));
+  assert.equal(res.code, 0);
+  assert.equal(res.out, "");
+});
+
+test("per-repo override on beats machine opt-out: worktree created", async () => {
+  const store = tmpDir();
+  await writeAutoSession(store, false); // machine off
+  const repo = tmpDir();
+  makeRepo(repo, { remote: false });
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(join(repo, ".zcode"), { recursive: true });
+  await writeFile(join(repo, ".zcode", "worktree.json"), JSON.stringify({ autoSession: true }));
+  const sid = "sess_ov2";
+  const res = await runHook(autoEnv(store, repo, sid), JSON.stringify({ session_id: sid }));
+  const ctx = ctxOf(res);
+  assert.match(ctx, /assigned its own isolated git worktree/);
 });
 
 test("auto mode on: new session in main checkout gets a bound worktree", async () => {

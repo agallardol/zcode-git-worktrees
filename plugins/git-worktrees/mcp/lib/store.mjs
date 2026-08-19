@@ -58,14 +58,23 @@ export async function persistStorePointer(root) {
 }
 
 // ---- auto-session mode marker (<storeRoot>/auto-session.json) ----
+// Default is ENABLED: every new session in a repo's main checkout gets its own
+// worktree unless explicitly disabled (/worktree:auto off writes
+// {enabled:false}, which persists; a per-repo override also exists in
+// .zcode/worktree.json — see the hooks). Missing or corrupt marker → default.
+
+export const DEFAULT_AUTO_SESSION = true;
 
 export async function readAutoSession(root) {
   try {
     const parsed = JSON.parse(await readFile(join(root, "auto-session.json"), "utf8"));
-    return { enabled: Boolean(parsed.enabled), updatedAt: parsed.updatedAt || null };
+    if (parsed && typeof parsed.enabled === "boolean") {
+      return { enabled: parsed.enabled, updatedAt: parsed.updatedAt || null, explicit: true };
+    }
   } catch {
-    return { enabled: false, updatedAt: null };
+    /* missing or corrupt → default */
   }
+  return { enabled: DEFAULT_AUTO_SESSION, updatedAt: null, explicit: false };
 }
 
 export async function writeAutoSession(root, enabled) {

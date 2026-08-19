@@ -14,6 +14,20 @@ import { Ops } from "../../mcp/lib/ops.mjs";
 import * as git from "../../mcp/lib/git.mjs";
 import { resolveStoreRoot, readAutoSession } from "../../mcp/lib/store.mjs";
 
+// Per-repo override in .zcode/worktree.json ("autoSession": true/false) beats
+// the machine-wide marker; null = no override.
+async function repoAutoOverride(mainPath) {
+  try {
+    const cfg = JSON.parse(
+      await readFile(join(mainPath, ".zcode", "worktree.json"), "utf8")
+    );
+    if (cfg && typeof cfg.autoSession === "boolean") return cfg.autoSession;
+  } catch {
+    /* absent or invalid → no override */
+  }
+  return null;
+}
+
 function readStdin() {
   return new Promise((resolve) => {
     let data = "";
@@ -91,7 +105,6 @@ async function main() {
 
   // 2) auto-session mode: assign a worktree to a fresh session in a main checkout
   const auto = await readAutoSession(root);
-  if (!auto.enabled) return;
   if (!sessionId) return;
 
   let repo;
@@ -101,6 +114,9 @@ async function main() {
     return; // not a git repository → normal session
   }
   const mainPath = await realpath(repo.mainPath).catch(() => repo.mainPath);
+  const override = await repoAutoOverride(mainPath);
+  const autoEnabled = override !== null ? override : auto.enabled;
+  if (!autoEnabled) return;
 
   const proj = store.project(mainPath);
   const bound = proj
