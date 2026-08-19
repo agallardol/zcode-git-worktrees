@@ -41,6 +41,14 @@ class McpClient {
         }
       }
     });
+    // A failed spawn (e.g. transient EAGAIN under load) must reject pending
+    // requests instead of hanging them until the timeout.
+    child.on("error", (err) => {
+      for (const { reject } of this.pending.values()) {
+        reject(new Error(`server process error: ${err.message}`));
+      }
+      this.pending.clear();
+    });
   }
 
   static async start(env) {
@@ -64,7 +72,12 @@ class McpClient {
           clearTimeout(timer);
           resolve(msg);
         },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
       });
+      this.child.stdin.on("error", () => {}); // EPIPE if server died early
       this.child.stdin.write(
         JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"
       );
@@ -81,18 +94,33 @@ class McpClient {
 }
 
 async function started(t, env) {
-  const client = await McpClient.start(env);
-  t.after(() => client.stop());
-  const init = await client.request("initialize", {
-    protocolVersion: "2025-06-18",
-    capabilities: {},
-    clientInfo: { name: "test", version: "0" },
-  });
-  assert.equal(init.error, undefined, "initialize succeeds");
-  client.sendRaw(
-    JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })
-  );
-  return client;
+  // One retry around the handshake — transient spawn hiccups on a loaded
+  // machine are environmental, not product failures.
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const client = await McpClient.start(env);
+    t.after(() => client.stop());
+    try {
+      const init = await client.request(
+        "initialize",
+        {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "test", version: "0" },
+        },
+        { timeoutMs: attempt === 0 ? 20_000 : 120_000 }
+      );
+      assert.equal(init.error, undefined, "initialize succeeds");
+      client.sendRaw(
+        JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })
+      );
+      return client;
+    } catch (err) {
+      lastError = err;
+      client.stop();
+    }
+  }
+  throw lastError;
 }
 
 async function callOk(client, name, args) {
@@ -386,4 +414,59 @@ test("create with sessionId binds the worktree; list exposes the session", async
 
   const list = await callOk(client, "worktrees_list", { repoPath: repo });
   assert.equal(list.worktrees[0].session?.id, "sess_deadbeef-0000");
+});
+
+test("server syncs Settings UI value into the marker (env → marker bridge)", async (t) => {
+  const store = tmpDir();
+
+  // UI = false → server start adopts it
+  let client = await McpClient.start({
+    ZCODE_WORKTREE_STORE_ROOT: store,
+    ZCODE_WORKTREE_AUTO_SESSION: "false",
+  });
+  await client.request("initialize", {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: { name: "t", version: "0" },
+  });
+  client.stop();
+  let marker = JSON.parse(await readFile(join(store, "auto-session.json"), "utf8"));
+  assert.deepEqual(
+    { enabled: marker.enabled, source: marker.source, lastUiValue: marker.lastUiValue },
+    { enabled: false, source: "ui", lastUiValue: false }
+  );
+
+  // /worktree:auto on → command value sticky while UI stays false
+  const { writeAutoSession } = await import("../../plugins/git-worktrees/mcp/lib/store.mjs");
+  await writeAutoSession(store, true);
+  client = await McpClient.start({
+    ZCODE_WORKTREE_STORE_ROOT: store,
+    ZCODE_WORKTREE_AUTO_SESSION: "false",
+  });
+  await client.request("ping", {});
+  client.stop();
+  marker = JSON.parse(await readFile(join(store, "auto-session.json"), "utf8"));
+  assert.equal(marker.enabled, true, "command value sticky while UI unchanged");
+  assert.equal(marker.source, "command");
+
+  // UI flips to true → newest deliberate change wins
+  client = await McpClient.start({
+    ZCODE_WORKTREE_STORE_ROOT: store,
+    ZCODE_WORKTREE_AUTO_SESSION: "true",
+  });
+  await client.request("ping", {});
+  client.stop();
+  marker = JSON.parse(await readFile(join(store, "auto-session.json"), "utf8"));
+  assert.deepEqual(
+    { enabled: marker.enabled, source: marker.source, lastUiValue: marker.lastUiValue },
+    { enabled: true, source: "ui", lastUiValue: true }
+  );
+});
+
+test("server without the UI env leaves the marker alone", async (t) => {
+  const store = tmpDir();
+  const client = await started(t, { ZCODE_WORKTREE_STORE_ROOT: store });
+  await callOk(client, "worktrees_auto_session", {}); // status only
+  client.stop();
+  assert.equal(existsSync(join(store, "auto-session.json")), false, "no env → no marker written");
 });

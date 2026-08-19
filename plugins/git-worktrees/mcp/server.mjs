@@ -6,9 +6,15 @@ import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { Ops, OpsError } from "./lib/ops.mjs";
 import { GitError } from "./lib/git.mjs";
-import { resolveStoreRoot, persistStorePointer } from "./lib/store.mjs";
+import {
+  resolveStoreRoot,
+  persistStorePointer,
+  readAutoSessionRaw,
+  writeAutoSessionMarker,
+  reconcileAutoSession,
+} from "./lib/store.mjs";
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 const SERVER_NAME = "git-worktrees";
 
 // ---- configuration from environment (manifest injects userConfig) ----------
@@ -25,6 +31,24 @@ const storeRoot = await resolveStoreRoot();
 // Hooks can't see this server's env — leave a pointer so they find the same
 // store (skipped under test overrides).
 await persistStorePointer(storeRoot).catch(() => {});
+
+// Bridge the Settings UI to the hooks: the manifest injects the userConfig
+// boolean auto_session as ZCODE_WORKTREE_AUTO_SESSION, and the server syncs it
+// into the marker file the hooks read (see reconcileAutoSession for the
+// precedence rules). Absent/unparseable env (older app, tests) → no sync.
+const autoSessionEnvRaw = env("ZCODE_WORKTREE_AUTO_SESSION", null);
+if (autoSessionEnvRaw === "true" || autoSessionEnvRaw === "false") {
+  const autoSessionEnv = autoSessionEnvRaw === "true";
+  try {
+    const marker = await readAutoSessionRaw(storeRoot);
+    const next = reconcileAutoSession(marker, autoSessionEnv);
+    if (next && next !== marker) {
+      await writeAutoSessionMarker(storeRoot, next);
+    }
+  } catch {
+    // syncing is best-effort; hooks fall back to the marker/default
+  }
+}
 const defaultBase = (() => {
   const v = env("ZCODE_WORKTREE_DEFAULT_BASE", "fresh").toLowerCase();
   return v === "head" ? "head" : "fresh";
@@ -170,7 +194,7 @@ const TOOLS = [
   {
     name: "worktrees_auto_session",
     description:
-      "Get or toggle auto-session mode (ENABLED by default). Every new session started in a repository's main checkout gets its own worktree (branch zcode/sess-<id>, based on current HEAD); resuming returns to the same worktree, and file edits to the main checkout are blocked in favor of the session worktree. Disable machine-wide with enabled:false, or per repo via .zcode/worktree.json {\"autoSession\": false}. Affects new sessions only.",
+      "Get or toggle auto-session mode (on by default; also configurable in Settings → Plugins → Git Worktrees). Every new session started in a repository's main checkout gets its own worktree (branch zcode/sess-<id>, based on current HEAD); resuming returns to the same worktree, and file edits to the main checkout are blocked in favor of the session worktree. UI changes are synced by the server at session start; the most recent deliberate change (Settings or this tool) wins. Per-repo override: .zcode/worktree.json {\"autoSession\": false}.",
     inputSchema: {
       type: "object",
       properties: {

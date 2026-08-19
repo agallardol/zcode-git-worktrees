@@ -112,11 +112,20 @@ Uninstall: `plugins/uninstall` or disable with `/plugins disable git-worktrees@z
 
 ```
 /worktree:auto           → status (on by default)
-/worktree:auto off       → disable machine-wide (persists; on re-enables)
+/worktree:auto off       → disable machine-wide (on re-enables)
 /worktree:end [name]     → commit everything, remove the worktree (branch kept)
 ```
 
-Per-repo override beats the machine setting: `.zcode/worktree.json` with `{"autoSession": false}` keeps that repo's sessions normal; `true` opts a repo in even when the mode is off.
+**Also in Settings → Plugins → Git Worktrees** ("Auto session worktrees"). How
+the UI reaches the hooks (which cannot read plugin settings): the manifest
+injects the boolean as `ZCODE_WORKTREE_AUTO_SESSION` into the MCP server, and
+the server syncs it into `<store>/auto-session.json` at every session start.
+Precedence is "most recent deliberate change wins" — a Settings change is
+adopted when it differs from the last synced value; a `/worktree:auto` write
+stays sticky until the Settings value changes again. Per-repo override beats
+both: `.zcode/worktree.json` with `{"autoSession": false}` keeps that repo's
+sessions normal; `true` opts a repo in even when the mode is off. Settings
+changes apply from the next session.
 
 How it works:
 

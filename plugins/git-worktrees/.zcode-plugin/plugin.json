@@ -1,6 +1,6 @@
 {
   "name": "git-worktrees",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Git worktree support for ZCode: create, list, inspect, remove, and clean up isolated worktrees with carry-over of ignored files (.worktreeinclude), snapshots before deletion, retention sweeps, PR checkouts, and background agent tasks.",
   "author": {
     "name": "agallardol"
@@ -18,7 +18,8 @@
         "ZCODE_WORKTREE_ROOT": "${user_config.worktree_root}",
         "ZCODE_WORKTREE_DEFAULT_BASE": "${user_config.default_base}",
         "ZCODE_WORKTREE_MAX_AGE_DAYS": "${user_config.max_age_days}",
-        "ZCODE_WORKTREE_MAX_COUNT": "${user_config.max_count}"
+        "ZCODE_WORKTREE_MAX_COUNT": "${user_config.max_count}",
+        "ZCODE_WORKTREE_AUTO_SESSION": "${user_config.auto_session}"
       }
     }
   },
@@ -46,6 +47,12 @@
       "default": 15,
       "title": "Max worktrees per project",
       "description": "worktrees_cleanup keeps at most this many managed worktrees per project, removing the least recently active ones first."
+    },
+    "auto_session": {
+      "type": "boolean",
+      "default": true,
+      "title": "Auto session worktrees",
+      "description": "Give every new session in a repository's main checkout its own isolated worktree (resumes return to it; main-checkout edits are redirected). Applies from the next session. The /worktree:auto command also toggles it (most recent change wins), and a repo can opt out via .zcode/worktree.json {\"autoSession\": false}."
     }
   }
 }

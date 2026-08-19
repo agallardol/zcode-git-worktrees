@@ -84,3 +84,58 @@ async function realHome() {
   const { homedir } = await import("node:os");
   return homedir();
 }
+
+// ---- UI ↔ marker reconciliation (Settings → server env → marker) ----
+
+test("reconcileAutoSession: no UI signal never touches the marker", async () => {
+  const { reconcileAutoSession } = await import("../../plugins/git-worktrees/mcp/lib/store.mjs");
+  const marker = { enabled: false, source: "command", lastUiValue: true };
+  assert.equal(reconcileAutoSession(marker, null), marker);
+  assert.equal(reconcileAutoSession(marker, "garbage"), marker);
+  assert.equal(reconcileAutoSession(null, null), null);
+});
+
+test("reconcileAutoSession: fresh adoption from the UI", async () => {
+  const { reconcileAutoSession } = await import("../../plugins/git-worktrees/mcp/lib/store.mjs");
+  const next = reconcileAutoSession(null, false);
+  assert.deepEqual(
+    { enabled: next.enabled, source: next.source, lastUiValue: next.lastUiValue },
+    { enabled: false, source: "ui", lastUiValue: false }
+  );
+});
+
+test("reconcileAutoSession: UI change adopts; unchanged UI keeps command stickiness", async () => {
+  const { reconcileAutoSession } = await import("../../plugins/git-worktrees/mcp/lib/store.mjs");
+  // marker synced from UI=true, then /worktree:auto off wrote enabled=false
+  const marker = { enabled: false, source: "command", lastUiValue: true };
+  // UI still true → no change (command value sticky)
+  assert.equal(reconcileAutoSession(marker, true), marker);
+  // UI changed to false → newest deliberate change wins
+  const adopted = reconcileAutoSession(marker, false);
+  assert.deepEqual(
+    { enabled: adopted.enabled, source: adopted.source, lastUiValue: adopted.lastUiValue },
+    { enabled: false, source: "ui", lastUiValue: false }
+  );
+});
+
+test("reconcileAutoSession: legacy marker (pre-0.4.0) keeps its value, records baseline", async () => {
+  const { reconcileAutoSession } = await import("../../plugins/git-worktrees/mcp/lib/store.mjs");
+  const legacy = { enabled: false, updatedAt: "2026-01-01T00:00:00Z" }; // no lastUiValue
+  const next = reconcileAutoSession(legacy, true);
+  assert.equal(next.enabled, false, "legacy command value not clobbered");
+  assert.equal(next.lastUiValue, true, "UI baseline recorded for future changes");
+});
+
+test("writeAutoSession preserves the UI baseline; server sync roundtrip via marker file", async () => {
+  const { writeAutoSession, writeAutoSessionMarker, readAutoSessionRaw } = await import(
+    "../../plugins/git-worktrees/mcp/lib/store.mjs"
+  );
+  const root = tmpDir();
+  await writeAutoSessionMarker(root, { enabled: true, source: "ui", lastUiValue: true });
+  await writeAutoSession(root, false); // /worktree:auto off
+  const marker = await readAutoSessionRaw(root);
+  assert.deepEqual(
+    { enabled: marker.enabled, source: marker.source, lastUiValue: marker.lastUiValue },
+    { enabled: false, source: "command", lastUiValue: true }
+  );
+});

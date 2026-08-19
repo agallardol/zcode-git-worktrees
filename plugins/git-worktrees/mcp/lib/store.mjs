@@ -58,10 +58,19 @@ export async function persistStorePointer(root) {
 }
 
 // ---- auto-session mode marker (<storeRoot>/auto-session.json) ----
-// Default is ENABLED: every new session in a repo's main checkout gets its own
-// worktree unless explicitly disabled (/worktree:auto off writes
-// {enabled:false}, which persists; a per-repo override also exists in
-// .zcode/worktree.json — see the hooks). Missing or corrupt marker → default.
+//
+// Sources of truth and precedence ("the most recent deliberate change wins"):
+//  - Settings UI (userConfig) → MCP server env → reconcileAutoSession() syncs
+//    the marker at every server start; lastUiValue tracks what was last synced
+//    so a later /worktree:auto command stays sticky until the UI value
+//    actually changes.
+//  - /worktree:auto (worktrees_auto_session tool) writes source:"command".
+//  - Per-repo override (.zcode/worktree.json "autoSession") is evaluated by
+//    the hooks and beats both.
+//
+// Default is ENABLED: a missing or corrupt marker means ON (fail-open to the
+// documented default), and the server writes the marker even for `true` so
+// hooks can rely on its presence after the first session.
 
 export const DEFAULT_AUTO_SESSION = true;
 
@@ -69,21 +78,69 @@ export async function readAutoSession(root) {
   try {
     const parsed = JSON.parse(await readFile(join(root, "auto-session.json"), "utf8"));
     if (parsed && typeof parsed.enabled === "boolean") {
-      return { enabled: parsed.enabled, updatedAt: parsed.updatedAt || null, explicit: true };
+      return {
+        enabled: parsed.enabled,
+        source: parsed.source || null,
+        updatedAt: parsed.updatedAt || null,
+        explicit: true,
+      };
     }
   } catch {
     /* missing or corrupt → default */
   }
-  return { enabled: DEFAULT_AUTO_SESSION, updatedAt: null, explicit: false };
+  return { enabled: DEFAULT_AUTO_SESSION, source: null, updatedAt: null, explicit: false };
+}
+
+// Raw parsed marker (null when missing/corrupt) — used by the sync logic,
+// which needs source/lastUiValue, not just the effective state.
+export async function readAutoSessionRaw(root) {
+  try {
+    const parsed = JSON.parse(await readFile(join(root, "auto-session.json"), "utf8"));
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {
+    /* missing or corrupt */
+  }
+  return null;
+}
+
+export async function writeAutoSessionMarker(root, marker) {
+  const file = join(root, "auto-session.json");
+  await mkdir(root, { recursive: true });
+  const tmp = `${file}.tmp-${process.pid}`;
+  await writeFile(tmp, JSON.stringify(marker, null, 2) + "\n");
+  await rename(tmp, file);
+  return { enabled: marker.enabled, path: file };
+}
+
+// Decide the new marker given the UI-provided value (env) and the current
+// marker. Returns the marker to write, or the same object when nothing
+// changes. envValue null (no userConfig signal — e.g. older app, tests)
+// never touches the marker.
+export function reconcileAutoSession(marker, envValue) {
+  if (envValue !== true && envValue !== false) return marker;
+  const now = new Date().toISOString();
+  if (!marker || typeof marker !== "object") {
+    return { enabled: envValue, source: "ui", lastUiValue: envValue, updatedAt: now };
+  }
+  if (marker.lastUiValue !== true && marker.lastUiValue !== false) {
+    // Legacy marker without a UI baseline (pre-0.4.0): keep its enabled value
+    // as the deliberate state, record the current UI value as the baseline.
+    return { ...marker, lastUiValue: envValue };
+  }
+  if (marker.lastUiValue !== envValue) {
+    // The UI value changed since the last sync → the UI is the newest
+    // deliberate change; adopt it.
+    return { enabled: envValue, source: "ui", lastUiValue: envValue, updatedAt: now };
+  }
+  return marker; // UI unchanged → a command-written value stays sticky
 }
 
 export async function writeAutoSession(root, enabled) {
-  const file = join(root, "auto-session.json");
-  const tmp = `${file}.tmp-${process.pid}`;
-  await writeFile(
-    tmp,
-    JSON.stringify({ enabled: Boolean(enabled), updatedAt: new Date().toISOString() }, null, 2) + "\n"
-  );
-  await rename(tmp, file);
-  return { enabled: Boolean(enabled), path: file };
+  const prev = await readAutoSessionRaw(root);
+  return writeAutoSessionMarker(root, {
+    enabled: Boolean(enabled),
+    source: "command",
+    lastUiValue: prev?.lastUiValue,
+    updatedAt: new Date().toISOString(),
+  });
 }
