@@ -10,7 +10,7 @@ Show the git worktree dashboard for the current repository.
    - `/worktree:new <name> [task description]` — create a worktree (auto-named if omitted; spawns a background agent when a task is given)
    - `/worktree:status <name>` · `/worktree:remove <name>` · `/worktree:cleanup` · `/worktree:pr <number>`
    - `/worktree:end [name]` — commit everything and remove the worktree (end-of-task)
-   - `/worktree:auto on|off` — per-session automatic worktrees (opt-in)
+   - `/worktree:auto` — per-session automatic worktrees (on by default; `off` disables, per-repo override in `.zcode/worktree.json`)
 4. If `worktrees` is empty, say so in one friendly line and suggest `/worktree:new <name>` with a one-sentence explanation of what worktrees are good for (parallel isolated tasks on one repo).
 
 Do not run raw git commands for this — the tool output is complete.
