@@ -1,7 +1,7 @@
 # Git Worktrees for ZCode
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen.svg)](#tests)
+[![Tests](https://img.shields.io/badge/tests-129%20passing-brightgreen.svg)](#tests)
 ![ZCode](https://img.shields.io/badge/ZCode-%E2%89%A5%203.8.1-6E56CF.svg)
 
 Every thread gets its own worktree — **automatically**. Git Worktrees gives
@@ -33,14 +33,21 @@ other. Start chatting; you are already isolated.
 
 ## Install
 
-In ZCode: **Settings → Plugin Management → + → Add marketplace from GitHub** →
+1. In ZCode Desktop, open **Settings → Plugin Management** and click **Add marketplace**.
+2. Paste the repo — a GitHub `owner/repo` slug or a full Git URL both work:
 
-```
-agallardol/zcode-git-worktrees
-```
+   ```
+   agallardol/zcode-git-worktrees
+   ```
 
-then install **Git Worktrees** from it (or say "install the git-worktrees
-plugin" to your agent). Requires ZCode ≥ 3.8.1, `node` ≥ 18 on PATH, `git`.
+3. Install **Git Worktrees** from the catalog.
+4. Open any git repo and start a thread — you're already isolated. Type `/worktree` for the dashboard.
+
+**Requirements**: ZCode ≥ 3.8.1, `node` ≥ 18 on PATH, `git`.
+
+**If `/worktree` doesn't appear**: run `node --version` in a terminal (the MCP
+server needs `node`), confirm the plugin is enabled under Installed, and restart
+ZCode if you installed it while the app was open.
 
 ## The commands
 
@@ -110,9 +117,11 @@ base (`fresh` = origin/HEAD with offline fallback, or `head`), max age days
   cross-process lockfile; parallel creates never lose state.
 - **Self-healing** — corrupt state quarantined and rebuilt, worktrees re-adopted
   from git, out-of-band deletions reconciled by `prune`/`cleanup`.
-- **Shell-free git** — every git call goes through `execFile`; the only shell
-  execution is your own `setupCommands`/`preRemoveCommands` from the repo's
-  `.zcode/worktree.json`.
+- **No execution from untrusted repos** — `setupCommands` / `preRemoveCommands`
+  run **only on worktrees you create explicitly**. Auto-session creates never
+  execute repo-provided commands: opening a cloned repo is never code
+  execution. Every git call goes through `execFile`; the only shell execution
+  is lifecycle commands you opted into.
 
 Compared to the tools that inspired it: PR-number checkouts and
 `.worktreeinclude` semantics come from Claude Code, snapshot-before-delete and
@@ -123,10 +132,12 @@ them expose to plugins.
 ## Tests
 
 ```sh
-npm test   # 123 tests: 80 unit (validators, state, carry-over, hooks, edit guard)
-           #         + 13 integration (real MCP stdio JSON-RPC + protocol edges)
-           #         + 30 adversarial (hostile names, races, corrupt state,
-           #            out-of-band damage, parallel creates/removes)
+npm test   # 129 tests: 80 unit (validators, state, carry-over, hooks, edit guard)
+           #        + 13 integration (real MCP stdio JSON-RPC + protocol edges)
+           #        + 34 adversarial & security (hostile names, races, corrupt
+           #           state, out-of-band damage, exploit regressions)
+
+CI runs the suite on macOS and Linux (Node 20 and 22).
 ```
 
 The suites run entirely against local fixtures — no network, no model calls.

@@ -160,6 +160,7 @@ async function main() {
         name,
         baseRef: "head", // start where the user is; no network fetch at session start
         sessionId,
+        skipLifecycleCommands: true, // SECURITY: never run repo-provided setup commands automatically
       });
       break;
     } catch (err) {

@@ -306,7 +306,7 @@ export class Ops {
     };
   }
 
-  async _create({ repoPath, name, baseRef, task, carryDirty, sessionId } = {}) {
+  async _create({ repoPath, name, baseRef, task, carryDirty, sessionId, skipLifecycleCommands } = {}) {
     const ctx = await this.ctx(repoPath);
 
     if (!(await git.hasCommits(ctx.mainPath))) {
@@ -412,10 +412,14 @@ export class Ops {
       }
     }
 
-    // setup commands
-    const setupResults = config.setupCommands.length
-      ? await this.runCommands(config.setupCommands, wtPath, { label: "setup" })
-      : [];
+    // setup commands — NEVER for auto-session creates: they come from the
+    // repo's .zcode/worktree.json, and running them the moment an untrusted
+    // repo is opened would be arbitrary code execution with zero user action.
+    // They run only on explicit creates (/worktree:new, tools).
+    const setupResults =
+      !skipLifecycleCommands && config.setupCommands.length
+        ? await this.runCommands(config.setupCommands, wtPath, { label: "setup" })
+        : [];
     const setupFailed = setupResults.some((r) => !r.ok);
     if (setupFailed) {
       warnings.push(
@@ -444,6 +448,7 @@ export class Ops {
       session: sessionId
         ? { id: sessionId, startedAt: now }
         : null,
+      lifecycleCommandsRan: !skipLifecycleCommands,
       locked: lockedByUs,
       lockedByUs,
       snapshots: [],
@@ -596,7 +601,10 @@ export class Ops {
     }
 
     const { config } = await this.projectConfig(ctx);
-    if (config.preRemoveCommands.length) {
+    // preRemove runs only for worktrees whose setup ran: pairing teardown with
+    // setup keeps untrusted-repo commands out of the auto-session lifecycle.
+    const ranLifecycle = entry.lifecycleCommandsRan !== false;
+    if (ranLifecycle && config.preRemoveCommands.length) {
       if (exists) {
         const results = await this.runCommands(config.preRemoveCommands, entry.path, {
           label: "preRemove",

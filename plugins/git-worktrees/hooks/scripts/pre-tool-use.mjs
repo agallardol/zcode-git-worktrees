@@ -118,6 +118,11 @@ async function main() {
     (w) => w.session?.id === sessionId
   );
   if (!bound) return; // session works normally (manual /worktree:new sessions are not policed)
+  try {
+    await realpath(bound.path);
+  } catch {
+    return; // bound worktree deleted out-of-band — allow rather than deny with a dead redirect
+  }
 
   const abs = resolvePath(cwd, filePath); // handles relative and absolute
   const canonical = await canonicalize(abs);

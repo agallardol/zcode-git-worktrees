@@ -1,6 +1,6 @@
 {
   "name": "git-worktrees",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Every thread automatically gets its own isolated git worktree — parallel work with zero setup. Snapshot-safe removal, background agent tasks, PR checkouts, and retention cleanup included.",
   "author": {
     "name": "Alfredo Gallardo",
