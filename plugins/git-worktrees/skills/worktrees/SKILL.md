@@ -23,8 +23,13 @@ Worktrees give every task its own directory + branch sharing one git object stor
 | `worktrees_prune` | Sync git + state after manual deletion |
 | `worktrees_snapshot` `{name}` | Snapshot uncommitted work on demand |
 | `worktrees_set_task` `{name, task?, agentId?, clearAgent?}` | Link a running agent to its worktree (locks it) |
+| `worktrees_auto_session` `{enabled?}` | Get/toggle auto-session mode (each new session in a main checkout gets its own worktree) |
 
-Slash commands `/worktree`, `/worktree:new`, `/worktree:list`, `/worktree:status`, `/worktree:remove`, `/worktree:cleanup`, `/worktree:pr` drive the same tools with the full UX.
+Slash commands `/worktree`, `/worktree:new`, `/worktree:list`, `/worktree:status`, `/worktree:remove`, `/worktree:cleanup`, `/worktree:pr`, `/worktree:end`, `/worktree:auto` drive the same tools with the full UX.
+
+## Auto-session mode (opt-in)
+
+`/worktree:auto on` → every NEW session started in a repo's main checkout is assigned its own worktree (branch `zcode/sess-<id>`, based on current HEAD). Resuming a session returns to its worktree; edits to the main checkout are blocked (PreToolUse guard) and redirected to the session worktree; `/worktree:end` commits everything and removes the worktree. Since sessions there run with cwd still in the main checkout, agents must use absolute paths into the worktree and `git -C` — the injected SessionStart context explains this. `/worktree:auto off` restores normal behavior.
 
 ## Core flows
 

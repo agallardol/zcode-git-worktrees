@@ -17,6 +17,7 @@ import { friendlyName } from "./names.mjs";
 import { carryOver, parseIncludeFile } from "./carryover.mjs";
 import { takeSnapshot } from "./snapshot.mjs";
 import { LockManager } from "./lock.mjs";
+import { readAutoSession, writeAutoSession } from "./store.mjs";
 
 const execFileP = promisify(execFile);
 const SETUP_TIMEOUT_MS = 10 * 60_000;
@@ -191,6 +192,7 @@ export class Ops {
       baseCommit: entry.baseCommit,
       task: entry.task || null,
       agent: entry.agent || null,
+      session: entry.session || null,
       locked: Boolean(entry.locked),
       lockedByUs: Boolean(entry.lockedByUs),
       createdAt: entry.createdAt,
@@ -243,6 +245,31 @@ export class Ops {
     return this.withLock(() => this._setTask(args));
   }
 
+  async autoSession(args = {}) {
+    return this.withLock(() => this._autoSession(args));
+  }
+
+  // Get/set the auto-session mode marker. When enabled, the SessionStart hook
+  // gives each new session in a repo's main checkout its own worktree.
+  async _autoSession({ enabled } = {}) {
+    const root = await this.ensureStoreRoot();
+    if (enabled === undefined) {
+      const current = await readAutoSession(root);
+      return {
+        ...current,
+        path: join(root, "auto-session.json"),
+        summary: `auto session worktrees are ${current.enabled ? "ENABLED" : "disabled"}`,
+      };
+    }
+    const result = await writeAutoSession(root, enabled);
+    return {
+      ...result,
+      summary: enabled
+        ? "auto session worktrees ENABLED — new sessions in a repo's main checkout get their own worktree (current sessions unaffected; /worktree:auto off disables)"
+        : "auto session worktrees disabled — new sessions run normally in the main checkout",
+    };
+  }
+
   async _list({ repoPath } = {}) {
     const ctx = await this.ctx(repoPath);
     const entries = await Promise.all(
@@ -273,7 +300,7 @@ export class Ops {
     };
   }
 
-  async _create({ repoPath, name, baseRef, task, carryDirty } = {}) {
+  async _create({ repoPath, name, baseRef, task, carryDirty, sessionId } = {}) {
     const ctx = await this.ctx(repoPath);
 
     if (!(await git.hasCommits(ctx.mainPath))) {
@@ -407,6 +434,9 @@ export class Ops {
       lastActivityAt: now,
       task: task || null,
       agent: null,
+      session: sessionId
+        ? { id: sessionId, startedAt: now }
+        : null,
       locked: lockedByUs,
       lockedByUs,
       snapshots: [],

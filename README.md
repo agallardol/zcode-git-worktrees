@@ -108,13 +108,28 @@ install time — after editing the plugin here, re-run `plugins/marketplace/upda
 (method `plugins/marketplace/update`) or reinstall to sync the cache.
 Uninstall: `plugins/uninstall` or disable with `/plugins disable git-worktrees@zcode-local`.
 
+## Auto-session worktrees (opt-in)
+
+```
+/worktree:auto on      → each NEW session in a repo's main checkout gets its own worktree
+/worktree:end [name]   → commit everything, remove the worktree (branch kept)
+/worktree:auto off     → back to normal sessions
+```
+
+How it works:
+
+- The **SessionStart hook** detects a new session (by `session_id`) in a git repo's main checkout and creates `zcode/sess-<session-8>` based on the current HEAD (no network fetch at session start). The binding is persistent — **resuming a session returns to its worktree**.
+- The session's cwd stays in the main checkout (ZCode plugins cannot change it), so this is *soft isolation with hard edit protection*: the injected context tells the agent to work via absolute paths and `git -C`, and a **PreToolUse guard blocks Write/Edit/ApplyPatch/NotebookEdit** against the main checkout while the mode is on and the session has an assigned worktree. Bash is not statically policed.
+- **There is no session-end event in ZCode**, so nothing is auto-committed or auto-removed at exit: `/worktree:end` is the explicit commit-and-remove flow, `/worktree:remove` discards (with snapshot), and the retention sweep collects idle session worktrees like any other.
+- The marker lives at `<store>/auto-session.json` (owned by the `worktrees_auto_session` tool). The MCP server persists a store pointer at `~/.zcode/worktrees/store-location.json` so hooks find a non-default configured root.
+
 ## Tests
 
 ```sh
-npm test                 # 91 tests total
-npm run test:unit        # 52 — validators, state, carry-over, snapshots, git ops, hook
-npm run test:integration #  9 — MCP server over real stdio JSON-RPC + protocol edge cases
-npm run test:adversarial # 30 — hostile names, races, corrupt state, out-of-band damage
+npm test                 # tests: unit + integration + adversarial (see counts below)
+npm run test:unit        # validators, state, carry-over, snapshots, git ops, hooks (incl. auto mode + edit guard)
+npm run test:integration # MCP server over real stdio JSON-RPC + protocol edge cases
+npm run test:adversarial # hostile names, races, corrupt state, out-of-band damage
 ```
 
 Adversarial highlights: 8 parallel creates across separate processes (no lost

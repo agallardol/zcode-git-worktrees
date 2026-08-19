@@ -9,6 +9,8 @@ Show the git worktree dashboard for the current repository.
 3. Below the table, print the store location and free disk space, then these hints:
    - `/worktree:new <name> [task description]` — create a worktree (auto-named if omitted; spawns a background agent when a task is given)
    - `/worktree:status <name>` · `/worktree:remove <name>` · `/worktree:cleanup` · `/worktree:pr <number>`
+   - `/worktree:end [name]` — commit everything and remove the worktree (end-of-task)
+   - `/worktree:auto on|off` — per-session automatic worktrees (opt-in)
 4. If `worktrees` is empty, say so in one friendly line and suggest `/worktree:new <name>` with a one-sentence explanation of what worktrees are good for (parallel isolated tasks on one repo).
 
 Do not run raw git commands for this — the tool output is complete.

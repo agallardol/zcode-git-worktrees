@@ -109,13 +109,14 @@ async function callErr(client, name, args) {
   return res.result.content[0].text;
 }
 
-test("initialize handshake and tools/list exposes 8 tools", async (t) => {
+test("initialize handshake and tools/list exposes 9 tools", async (t) => {
   const store = tmpDir();
   const client = await started(t, { ZCODE_WORKTREE_STORE_ROOT: store });
   const list = await client.request("tools/list", {});
   assert.equal(list.error, undefined);
   const names = list.result.tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
+    "worktrees_auto_session",
     "worktrees_cleanup",
     "worktrees_create",
     "worktrees_list",
@@ -344,4 +345,42 @@ test("state.json gets 0600 permissions", async (t) => {
   const st = await stat(join(store, "state.json"));
   // 0600 = owner rw only (mask 0o777)
   assert.equal(st.mode & 0o777, 0o600);
+});
+
+test("auto_session tool: off by default, toggle roundtrip, invalid args", async (t) => {
+  const store = tmpDir();
+  const client = await started(t, { ZCODE_WORKTREE_STORE_ROOT: store });
+
+  const initial = await callOk(client, "worktrees_auto_session", {});
+  assert.equal(initial.enabled, false);
+
+  const on = await callOk(client, "worktrees_auto_session", { enabled: true });
+  assert.equal(on.enabled, true);
+  const marker = JSON.parse(await readFile(on.path, "utf8"));
+  assert.equal(marker.enabled, true);
+
+  const off = await callOk(client, "worktrees_auto_session", { enabled: false });
+  assert.equal(off.enabled, false);
+
+  assert.match(
+    await callErr(client, "worktrees_auto_session", { enabled: "yes" }),
+    /must be boolean/
+  );
+});
+
+test("create with sessionId binds the worktree; list exposes the session", async (t) => {
+  const store = tmpDir();
+  const repo = tmpDir();
+  makeRepo(repo, { remote: false });
+  const client = await started(t, { ZCODE_WORKTREE_STORE_ROOT: store });
+
+  const created = await callOk(client, "worktrees_create", {
+    repoPath: repo,
+    name: "sess-bound",
+    sessionId: "sess_deadbeef-0000",
+  });
+  assert.equal(created.name, "sess-bound");
+
+  const list = await callOk(client, "worktrees_list", { repoPath: repo });
+  assert.equal(list.worktrees[0].session?.id, "sess_deadbeef-0000");
 });

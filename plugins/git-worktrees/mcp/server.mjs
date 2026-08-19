@@ -3,12 +3,12 @@
 // Zero-dependency: newline-delimited JSON-RPC 2.0 over stdin/stdout per the
 // MCP stdio transport. Tool logic lives in ./lib/ops.mjs.
 import { createInterface } from "node:readline";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { Ops, OpsError } from "./lib/ops.mjs";
 import { GitError } from "./lib/git.mjs";
+import { resolveStoreRoot, persistStorePointer } from "./lib/store.mjs";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 const SERVER_NAME = "git-worktrees";
 
 // ---- configuration from environment (manifest injects userConfig) ----------
@@ -21,17 +21,10 @@ function env(name, fallback) {
   return raw;
 }
 
-function expandHome(p) {
-  if (!p) return p;
-  if (p === "~") return homedir();
-  if (p.startsWith("~/")) return join(homedir(), p.slice(2));
-  return p;
-}
-
-const storeRoot = expandHome(
-  process.env.ZCODE_WORKTREE_STORE_ROOT || // tests / overrides
-    env("ZCODE_WORKTREE_ROOT", join(homedir(), ".zcode", "worktrees"))
-);
+const storeRoot = await resolveStoreRoot();
+// Hooks can't see this server's env — leave a pointer so they find the same
+// store (skipped under test overrides).
+await persistStorePointer(storeRoot).catch(() => {});
 const defaultBase = (() => {
   const v = env("ZCODE_WORKTREE_DEFAULT_BASE", "fresh").toLowerCase();
   return v === "head" ? "head" : "fresh";
@@ -75,6 +68,10 @@ const TOOLS = [
         carryDirty: {
           type: "boolean",
           description: "Also copy the current checkout's uncommitted changes into the new worktree.",
+        },
+        sessionId: {
+          type: "string",
+          description: "Bind the worktree to a ZCode session id (used by auto-session mode; resumes return to it).",
         },
         repoPath: { type: "string", description: "Repository path (defaults to cwd)." },
       },
@@ -169,6 +166,21 @@ const TOOLS = [
       required: ["name"],
     },
     handler: (args) => ops.setTask(args),
+  },
+  {
+    name: "worktrees_auto_session",
+    description:
+      "Get or toggle auto-session mode. When enabled, every new session started in a repository's main checkout is automatically given its own worktree (branch zcode/sess-<id>, based on current HEAD); resuming a session returns to the same worktree, and file edits to the main checkout are blocked in favor of the session worktree. Affects new sessions only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        enabled: {
+          type: "boolean",
+          description: "Omit to read the current state; true/false to enable/disable.",
+        },
+      },
+    },
+    handler: (args) => ops.autoSession(args),
   },
 ];
 
