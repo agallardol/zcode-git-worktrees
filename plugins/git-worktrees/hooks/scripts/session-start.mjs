@@ -139,7 +139,11 @@ async function main() {
     }
   }
 
-  const ops = new Ops({ storeRoot: root, defaultBase: "head" });
+  const ops = new Ops({
+    storeRoot: root,
+    defaultBase: "head",
+    lockTimeoutMs: 5_000, // fail fast on contention — the hook has its own budget
+  });
   const suffix = sessionId
     .replace(/^sess_/, "")
     .replace(/[^a-zA-Z0-9]/g, "")

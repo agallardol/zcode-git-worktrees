@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "node \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/session-start.mjs\"",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "node \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/pre-tool-use.mjs\"",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }

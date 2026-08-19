@@ -53,11 +53,13 @@ export class Ops {
     defaultBase = "fresh",
     maxAgeDays = 14,
     maxCount = 15,
+    lockTimeoutMs = 30_000,
   } = {}) {
     this.storeRoot = storeRoot;
     this.defaultBase = defaultBase;
     this.maxAgeDays = maxAgeDays;
     this.maxCount = maxCount;
+    this.lockTimeoutMs = lockTimeoutMs;
   }
 
   snapshotsRoot(slug) {
@@ -80,7 +82,7 @@ export class Ops {
   async withLock(fn) {
     if (!this._lock) {
       const root = await this.ensureStoreRoot();
-      this._lock = new LockManager(join(root, ".lock"));
+      this._lock = new LockManager(join(root, ".lock"), { timeoutMs: this.lockTimeoutMs });
     }
     return this._lock.run(fn);
   }
@@ -362,9 +364,10 @@ export class Ops {
       throw err;
     }
 
-    // free space
-    const need = await git.estimateCheckoutNeed(ctx.mainPath);
-    const space = await checkFreeSpace(projectDir, need);
+    // free space: instant statfs floor check only. Deliberately NO `du` here —
+    // sizing a large checkout takes 10s+ and this path runs inside the
+    // SessionStart hook (detailed sizing stays in status/list, interactive).
+    const space = await checkFreeSpace(projectDir, null);
     if (space.level === "block") throw new OpsError(space.message);
 
     // create (rolling back the branch if git fails halfway — a failed

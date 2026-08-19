@@ -624,3 +624,43 @@ test("adversarial: create from FETCH_HEAD-style explicit commit", async () => {
     "worktree checked out at requested commit"
   );
 });
+
+// ------------------------------------------------- hook-budget regressions
+
+test("adversarial: create never sizes the repo with du (hook budget)", async () => {
+  // ESM namespaces are frozen, so assert statically: the _create body must not
+  // call the du-based sizers (they take 10s+ on huge checkouts and the create
+  // path runs inside the SessionStart hook).
+  const { readFile } = await import("node:fs/promises");
+  const { fileURLToPath } = await import("node:url");
+  const source = await readFile(
+    fileURLToPath(new URL("../../plugins/git-worktrees/mcp/lib/ops.mjs", import.meta.url)),
+    "utf8"
+  );
+  const createBody = source.split("async _create(")[1]?.split(/\n  async _/)[0] ?? "";
+  assert.ok(createBody.length > 0, "_create body found");
+  assert.equal(/estimateCheckoutNeed|dirSize/.test(createBody), false, "no du-based sizing in _create");
+  // and a real create still succeeds
+  const { ops } = newOps();
+  const repo = tmpDir();
+  makeRepo(repo, { remote: false });
+  const created = await ops.create({ repoPath: repo, name: "no-du" });
+  assert.ok(existsSync(created.path));
+});
+
+test("adversarial: lock contention fails fast when lockTimeoutMs is small", async () => {
+  const { storeRoot } = newOps();
+  const repo = tmpDir();
+  makeRepo(repo, { remote: false });
+  // simulate an abandoned/foreign lock in the store
+  const { mkdir } = await import("node:fs/promises");
+  const canonRoot = await realpath(storeRoot);
+  await mkdir(join(canonRoot, ".lock"), { recursive: true });
+  const { Ops } = await import("../../plugins/git-worktrees/mcp/lib/ops.mjs");
+  const ops = new Ops({ storeRoot, lockTimeoutMs: 300 });
+  const t0 = Date.now();
+  await rejects(/timed out waiting for the worktree store lock/, () =>
+    ops.create({ repoPath: repo, name: "contended" })
+  );
+  assert.ok(Date.now() - t0 < 5_000, "fails fast instead of eating the hook budget");
+});

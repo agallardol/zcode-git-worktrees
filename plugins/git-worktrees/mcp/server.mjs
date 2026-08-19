@@ -14,7 +14,7 @@ import {
   reconcileAutoSession,
 } from "./lib/store.mjs";
 
-const VERSION = "0.4.0";
+const VERSION = "0.4.1";
 const SERVER_NAME = "git-worktrees";
 
 // ---- configuration from environment (manifest injects userConfig) ----------

@@ -14,8 +14,9 @@ const LOCK_TIMEOUT_MS = 30_000;
 const LOCK_STALE_MS = 120_000;
 
 export class LockManager {
-  constructor(lockDir) {
+  constructor(lockDir, { timeoutMs = LOCK_TIMEOUT_MS } = {}) {
     this.lockDir = lockDir;
+    this.timeoutMs = timeoutMs;
     this.queue = Promise.resolve();
   }
 
@@ -42,7 +43,7 @@ export class LockManager {
         break;
       } catch (err) {
         if (err.code !== "EEXIST") throw err;
-        if (Date.now() - started > LOCK_TIMEOUT_MS) {
+        if (Date.now() - started > this.timeoutMs) {
           throw new Error(
             `timed out waiting for the worktree store lock (${this.lockDir}); another ZCode session may be stuck — delete that lock directory to force`
           );
