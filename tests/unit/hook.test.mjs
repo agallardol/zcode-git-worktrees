@@ -277,3 +277,26 @@ async function readFile2(p) {
   const { readFile } = await import("node:fs/promises");
   return readFile(p, "utf8");
 }
+
+test("UserPromptSubmit backstop: silent when bound, schedules when not", async () => {
+  const store = tmpDir();
+  const repo = tmpDir();
+  makeRepo(repo, { remote: false });
+
+  // unbound session sends its first prompt → worktree scheduled (sync mode)
+  const sid = "sess_promptbs-0000-0000-0000-00000000ee55";
+  const r1 = await runHook(
+    autoEnv(store, repo, sid),
+    JSON.stringify({ session_id: sid, hook_event_name: "UserPromptSubmit", prompt: "hi" })
+  );
+  assert.equal(r1.code, 0);
+  assert.match(ctxOf(r1), /being prepared right now/);
+
+  // later prompts on the same session → completely silent
+  const r2 = await runHook(
+    autoEnv(store, repo, sid),
+    JSON.stringify({ session_id: sid, hook_event_name: "UserPromptSubmit", prompt: "again" })
+  );
+  assert.equal(r2.code, 0);
+  assert.equal(r2.out, "", "bound session: no re-injection on prompts");
+});

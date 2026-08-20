@@ -23,6 +23,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/session-start.mjs\"",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

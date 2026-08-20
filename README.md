@@ -1,7 +1,7 @@
 # Git Worktrees for ZCode
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-129%20passing-brightgreen.svg)](#tests)
+[![Tests](https://img.shields.io/badge/tests-130%20passing-brightgreen.svg)](#tests)
 ![ZCode](https://img.shields.io/badge/ZCode-%E2%89%A5%203.8.1-6E56CF.svg)
 
 Every thread gets its own worktree — **automatically**. Git Worktrees gives
@@ -132,7 +132,7 @@ them expose to plugins.
 ## Tests
 
 ```sh
-npm test   # 129 tests: 80 unit (validators, state, carry-over, hooks, edit guard)
+npm test   # 130 tests: 81 unit (validators, state, carry-over, hooks, edit guard)
            #        + 13 integration (real MCP stdio JSON-RPC + protocol edges)
            #        + 36 adversarial & security (hostile names, races, corrupt
            #           state, out-of-band damage, exploit regressions)

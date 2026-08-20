@@ -53,6 +53,7 @@ async function main() {
     input = {};
   }
   const sessionId = typeof input.session_id === "string" ? input.session_id : null;
+  const onPrompt = input.hook_event_name === "UserPromptSubmit";
 
   const cwdRaw =
     process.env.ZCODE_PROJECT_DIR ||
@@ -82,6 +83,7 @@ async function main() {
     }
   }
   if (found) {
+    if (onPrompt) return; // already injected at this session’s start; prompts re-check silently
     const lines = [
       `[git-worktrees] This session is running inside the managed git worktree "${found.name}".`,
       `- Worktree path: ${found.path}`,
@@ -125,6 +127,7 @@ async function main() {
     : null;
 
   if (bound) {
+    if (onPrompt) return; // binding already communicated
     try {
       await realpath(bound.path);
       return emitContext([
