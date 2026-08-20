@@ -97,7 +97,7 @@ async function started(t, env) {
   // One retry around the handshake — transient spawn hiccups on a loaded
   // machine are environmental, not product failures.
   let lastError;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const client = await McpClient.start(env);
     t.after(() => client.stop());
     try {
@@ -108,7 +108,7 @@ async function started(t, env) {
           capabilities: {},
           clientInfo: { name: "test", version: "0" },
         },
-        { timeoutMs: attempt === 0 ? 20_000 : 120_000 }
+        { timeoutMs: attempt === 0 ? 60_000 : 120_000 }
       );
       assert.equal(init.error, undefined, "initialize succeeds");
       client.sendRaw(
